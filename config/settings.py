@@ -26,7 +26,7 @@ SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-ipyepxwnjm*b4y7$%8&c%
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get('DEBUG', 'True') == 'True'
 
-ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
+ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'web-production-69d231.up.railway.app,localhost,127.0.0.1').split(',')
 
 
 # Application definition
@@ -159,8 +159,8 @@ SIMPLE_JWT = {
 }
 
 # CORS — allow frontend origins
-CORS_ALLOWED_ORIGINS = os.environ.get('CORS_ALLOWED_ORIGINS', 
-    'http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000'
+CORS_ALLOWED_ORIGINS = os.environ.get('CORS_ALLOWED_ORIGINS',
+    'https://kababoopishamie-oss.github.io,https://web-production-69d231.up.railway.app,http://localhost:5173,http://127.0.0.1:5173'
 ).split(',')
 
 # Weather API Configuration
