@@ -4,22 +4,35 @@ from rest_framework import status
 from rest_framework.permissions import AllowAny
 from rest_framework_simplejwt.tokens import RefreshToken
 from .serializers import SignupSerializer, LoginSerializer
+from .models import User
 
 
 def _token_response(user):
     refresh = RefreshToken.for_user(user)
     return {
-        'access': str(refresh.access_token),
+        'access':  str(refresh.access_token),
         'refresh': str(refresh),
         'user': {
             'id':           user.id,
-            'email':        user.email,
             'full_name':    user.full_name,
+            'email':        user.email,
             'phone_number': user.phone_number,
-            'farm_name':    user.farm_name,
-            'country':      user.country,
         },
     }
+
+
+class CheckIdentifierView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        value = request.query_params.get('value', '').strip()
+        if not value:
+            return Response({'available': False})
+        taken = (
+            User.objects.filter(email=value).exists() or
+            User.objects.filter(phone_number=value).exists()
+        )
+        return Response({'available': not taken})
 
 
 class SignupView(APIView):
@@ -29,7 +42,6 @@ class SignupView(APIView):
         serializer = SignupSerializer(data=request.data)
         if serializer.is_valid():
             user = serializer.save()
-            # Bootstrap isolated data for this tenant on registration
             from api.models import FarmSettings
             FarmSettings.objects.get_or_create(user=user)
             return Response(_token_response(user), status=status.HTTP_201_CREATED)
