@@ -25,14 +25,14 @@ class SignupSerializer(serializers.Serializer):
                 raise serializers.ValidationError({'email': 'An account with this email already exists.'})
             attrs['email'] = email
         else:
-            attrs.pop('email', None)
+            attrs['email'] = ''
 
         if phone_number:
             if User.objects.filter(phone_number=phone_number).exists():
                 raise serializers.ValidationError({'phone_number': 'An account with this phone number already exists.'})
             attrs['phone_number'] = phone_number
         else:
-            attrs.pop('phone_number', None)
+            attrs['phone_number'] = ''
 
         return attrs
 
