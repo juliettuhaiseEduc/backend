@@ -160,7 +160,7 @@ SIMPLE_JWT = {
 
 # CORS — allow frontend origins
 CORS_ALLOWED_ORIGINS = os.environ.get('CORS_ALLOWED_ORIGINS',
-    'https://kababoopishamie-oss.github.io,https://web-production-69d231.up.railway.app,http://localhost:5173,http://127.0.0.1:5173'
+    'https://ssemata.github.io,https://kababoopishamie-oss.github.io,https://web-production-69d231.up.railway.app,http://localhost:5173,http://127.0.0.1:5173'
 ).split(',')
 
 # Weather API Configuration
