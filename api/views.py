@@ -219,103 +219,21 @@ class FarmSettingsView(APIView):
 
 class WifiStatusView(APIView):
     def get(self, request):
-        try:
-            import subprocess, re
-            out = subprocess.check_output(
-                ['netsh', 'wlan', 'show', 'interfaces'],
-                stderr=subprocess.DEVNULL, text=True, encoding='utf-8', errors='replace'
-            )
-
-            def _field(pattern):
-                m = re.search(pattern, out, re.IGNORECASE)
-                return m.group(1).strip() if m else None
-
-            state   = _field(r'State\s*:\s*(.+)')
-            ssid    = _field(r'(?<!AP )SSID\s*:\s*(.+)')
-            bssid   = _field(r'AP BSSID\s*:\s*(.+)')
-            mac     = _field(r'Physical address\s*:\s*(.+)')
-            channel = _field(r'Channel\s*:\s*(\d+)')
-            rssi    = _field(r'Rssi\s*:\s*(-?\d+)')
-            signal  = _field(r'Signal\s*:\s*(\d+)')
-
-            connected = state and 'connected' in state.lower()
-
-            # Get IP address
-            ip = None
-            try:
-                ip_out = subprocess.check_output(
-                    ['netsh', 'interface', 'ip', 'show', 'address', 'Wi-Fi'],
-                    stderr=subprocess.DEVNULL, text=True, encoding='utf-8', errors='replace'
-                )
-                ip_m = re.search(r'IP Address:\s*(\d+\.\d+\.\d+\.\d+)', ip_out)
-                ip = ip_m.group(1) if ip_m else None
-            except Exception:
-                pass
-
-            return Response({
-                'ssid':    ssid if connected else None,
-                'status':  'Connected' if connected else 'Disconnected',
-                'rssi':    int(rssi) if rssi else None,
-                'signal':  int(signal) if signal else None,
-                'ip':      ip,
-                'mac':     mac,
-                'bssid':   bssid,
-                'channel': int(channel) if channel else None,
-            })
-        except Exception as e:
-            return Response({'status': 'Disconnected', 'error': str(e)})
+        return Response({
+            'ssid':    None,
+            'status':  'Disconnected',
+            'rssi':    None,
+            'signal':  None,
+            'ip':      None,
+            'mac':     None,
+            'bssid':   None,
+            'channel': None,
+        })
 
 
 class WifiScanView(APIView):
     def get(self, request):
-        try:
-            import subprocess, re
-            out = subprocess.check_output(
-                ['netsh', 'wlan', 'show', 'networks', 'mode=bssid'],
-                stderr=subprocess.DEVNULL, text=True, encoding='utf-8', errors='replace'
-            )
-
-            networks = []
-            # Split into per-SSID blocks
-            blocks = re.split(r'SSID \d+ :', out)[1:]  # skip header
-
-            for block in blocks:
-                lines = block.strip().splitlines()
-                ssid = lines[0].strip() if lines else ''
-                if not ssid:
-                    continue
-
-                auth_m    = re.search(r'Authentication\s*:\s*(.+)', block, re.IGNORECASE)
-                signal_m  = re.search(r'Signal\s*:\s*(\d+)%', block, re.IGNORECASE)
-                channel_m = re.search(r'Channel\s*:\s*(\d+)', block, re.IGNORECASE)
-                band_m    = re.search(r'Band\s*:\s*(.+)', block, re.IGNORECASE)
-
-                signal_pct = int(signal_m.group(1)) if signal_m else 0
-                # Convert signal % to approximate RSSI dBm
-                rssi = round((signal_pct / 2) - 100)
-
-                auth = auth_m.group(1).strip() if auth_m else ''
-                secured = 'open' not in auth.lower()
-
-                networks.append({
-                    'ssid':     ssid,
-                    'rssi':     rssi,
-                    'signal':   signal_pct,
-                    'secured':  secured,
-                    'auth':     auth,
-                    'channel':  int(channel_m.group(1)) if channel_m else None,
-                    'band':     band_m.group(1).strip() if band_m else None,
-                })
-
-            # Sort strongest signal first
-            networks.sort(key=lambda n: n['rssi'], reverse=True)
-            return Response({'networks': networks})
-
-        except Exception as e:
-            return Response(
-                {'detail': f'Scan failed: {str(e)}'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+        return Response({'networks': []})
 
 
 class WifiConfigureView(APIView):
