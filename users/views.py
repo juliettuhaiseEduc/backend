@@ -17,6 +17,7 @@ def _token_response(user):
             'full_name':    user.full_name,
             'email':        user.email,
             'phone_number': user.phone_number,
+            'is_staff':     user.is_staff,
         },
     }
 
