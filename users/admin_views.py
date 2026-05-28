@@ -471,7 +471,13 @@ class AdminSettingsView(APIView):
 
     def get(self, request):
         from api.models import SystemSettings
+        from django.utils import timezone
         ss = SystemSettings.get()
+        # Auto bring online if scheduled time has passed
+        if not ss.system_online and ss.online_at and ss.online_at <= timezone.now():
+            ss.system_online = True
+            ss.online_at = None
+            ss.save(update_fields=['system_online', 'online_at'])
         admins = User.objects.filter(is_staff=True).order_by('full_name')
         return Response({
             'system': {
@@ -479,6 +485,7 @@ class AdminSettingsView(APIView):
                 'maintenance_title':    ss.maintenance_title,
                 'maintenance_message':  ss.maintenance_message,
                 'maintenance_sub':      ss.maintenance_sub,
+                'online_at':            ss.online_at,
                 'updated_at':           ss.updated_at,
                 'updated_by':           ss.updated_by.full_name if ss.updated_by else None,
             },
@@ -504,11 +511,14 @@ class AdminSettingsView(APIView):
         action = request.data.get('action')
 
         if action == 'toggle_system':
+            from django.utils.dateparse import parse_datetime
             ss = SystemSettings.get()
             ss.system_online = request.data.get('online', not ss.system_online)
             if 'maintenance_title'   in request.data: ss.maintenance_title   = request.data['maintenance_title']
             if 'maintenance_message' in request.data: ss.maintenance_message = request.data['maintenance_message']
             if 'maintenance_sub'     in request.data: ss.maintenance_sub     = request.data['maintenance_sub']
+            online_at_raw = request.data.get('online_at')
+            ss.online_at = parse_datetime(online_at_raw) if online_at_raw else None
             ss.updated_by = request.user
             ss.save()
             return Response({
@@ -516,6 +526,7 @@ class AdminSettingsView(APIView):
                 'maintenance_title':   ss.maintenance_title,
                 'maintenance_message': ss.maintenance_message,
                 'maintenance_sub':     ss.maintenance_sub,
+                'online_at':           ss.online_at,
             })
 
         elif action == 'update_maintenance_text':
@@ -597,15 +608,21 @@ class AdminSettingsView(APIView):
 
 
 class SystemStatusView(APIView):
-    """Public endpoint — returns system online/offline status + maintenance message"""
     permission_classes = [AllowAny]
 
     def get(self, request):
         from api.models import SystemSettings
+        from django.utils import timezone
         ss = SystemSettings.get()
+        # Auto bring online if scheduled time has passed
+        if not ss.system_online and ss.online_at and ss.online_at <= timezone.now():
+            ss.system_online = True
+            ss.online_at = None
+            ss.save(update_fields=['system_online', 'online_at'])
         return Response({
             'online':              ss.system_online,
             'maintenance_title':   ss.maintenance_title,
             'maintenance_message': ss.maintenance_message,
             'maintenance_sub':     ss.maintenance_sub,
+            'online_at':           ss.online_at,
         })

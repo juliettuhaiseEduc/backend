@@ -112,6 +112,7 @@ class SystemSettings(models.Model):
     maintenance_title    = models.CharField(max_length=200, default='System Maintenance')
     maintenance_message  = models.TextField(default='The system is currently under maintenance. Please check back later.')
     maintenance_sub      = models.CharField(max_length=300, blank=True, default='We apologize for the inconvenience.')
+    online_at            = models.DateTimeField(null=True, blank=True, help_text='Scheduled time to go back online')
     updated_at           = models.DateTimeField(auto_now=True)
     updated_by           = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
 
