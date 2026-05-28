@@ -1,7 +1,7 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
 from .serializers import SignupSerializer, LoginSerializer
 from .models import User
@@ -13,11 +13,12 @@ def _token_response(user):
         'access':  str(refresh.access_token),
         'refresh': str(refresh),
         'user': {
-            'id':           user.id,
-            'full_name':    user.full_name,
-            'email':        user.email,
-            'phone_number': user.phone_number,
-            'is_staff':     user.is_staff,
+            'id':                 user.id,
+            'full_name':          user.full_name,
+            'email':              user.email,
+            'phone_number':       user.phone_number,
+            'is_staff':           user.is_staff,
+            'must_change_password': getattr(user, 'must_change_password', False),
             'weather_access':     getattr(user, 'weather_access', True),
             'admin_level':        getattr(user, 'admin_level', 'user'),
             'can_manage_users':   getattr(user, 'can_manage_users', False),
@@ -63,3 +64,19 @@ class LoginView(APIView):
         if serializer.is_valid():
             return Response(_token_response(serializer.validated_data['user']))
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class SetPasswordView(APIView):
+    """Called right after first login — sets permanent password, clears OTP flag."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        new_pass = request.data.get('new_password', '')
+        if len(new_pass) < 8:
+            return Response({'detail': 'Password must be at least 8 characters.'}, status=status.HTTP_400_BAD_REQUEST)
+        user = request.user
+        user.set_password(new_pass)
+        user.must_change_password = False
+        user.otp_code = ''
+        user.save(update_fields=['password', 'must_change_password', 'otp_code'])
+        return Response(_token_response(user))

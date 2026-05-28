@@ -527,22 +527,27 @@ class AdminSettingsView(APIView):
             return Response({'saved': True})
 
         elif action == 'create_admin':
+            import random
             email    = request.data.get('email', '').strip()
             phone    = request.data.get('phone_number', '').strip()
             name     = request.data.get('full_name', '').strip()
-            password = request.data.get('password', '').strip()
             level    = request.data.get('admin_level', 'moderator')
             perms    = request.data.get('permissions', {})
 
-            if not name or not password:
-                return Response({'detail': 'full_name and password are required.'}, status=status.HTTP_400_BAD_REQUEST)
+            if not name:
+                return Response({'detail': 'full_name is required.'}, status=status.HTTP_400_BAD_REQUEST)
             if not email and not phone:
                 return Response({'detail': 'Email or phone number is required.'}, status=status.HTTP_400_BAD_REQUEST)
             if email and User.objects.filter(email=email).exists():
                 return Response({'detail': 'Email already in use.'}, status=status.HTTP_400_BAD_REQUEST)
+            if phone and User.objects.filter(phone_number=phone).exists():
+                return Response({'detail': 'Phone number already in use.'}, status=status.HTTP_400_BAD_REQUEST)
+
+            import random
+            otp = f'{random.randint(0, 999999):06d}'
 
             user = User.objects.create_user(
-                password=password,
+                password=otp,          # OTP is the temporary login password
                 email=email or None,
                 phone_number=phone or None,
                 full_name=name,
@@ -552,10 +557,14 @@ class AdminSettingsView(APIView):
                 can_manage_devices=perms.get('devices', False),
                 can_manage_weather=perms.get('weather', False),
                 can_manage_system=perms.get('system', False),
+                must_change_password=True,
+                otp_code=otp,
             )
             return Response({
                 'id': user.id, 'full_name': user.full_name,
-                'email': user.email, 'admin_level': user.admin_level,
+                'email': user.email, 'phone_number': user.phone_number,
+                'admin_level': user.admin_level,
+                'otp': otp,
             }, status=status.HTTP_201_CREATED)
 
         elif action == 'update_admin':

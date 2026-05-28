@@ -25,8 +25,10 @@ class User(AbstractBaseUser, PermissionsMixin):
     full_name    = models.CharField(max_length=150)
     farm_name    = models.CharField(max_length=150, blank=True, default='')
     country      = models.CharField(max_length=100, blank=True, default='')
-    is_active       = models.BooleanField(default=True)
-    is_staff        = models.BooleanField(default=False)
+    is_active            = models.BooleanField(default=True)
+    is_staff             = models.BooleanField(default=False)
+    must_change_password = models.BooleanField(default=False)
+    otp_code             = models.CharField(max_length=6, blank=True, default='')
     weather_access  = models.BooleanField(default=True)  # admin can revoke
     admin_level     = models.CharField(max_length=20, default='user',
                         choices=[('user','User'),('moderator','Moderator'),('admin','Admin'),('superadmin','Super Admin')])
