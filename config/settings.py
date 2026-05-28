@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 
 from pathlib import Path
 import os
+from decouple import config
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -21,12 +22,12 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-ipyepxwnjm*b4y7$%8&c%ulfsk27&9xg+)qegw7oj=oz*4-&to')
+SECRET_KEY = config('SECRET_KEY', default='django-insecure-ipyepxwnjm*b4y7$%8&c%ulfsk27&9xg+)qegw7oj=oz*4-&to')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.environ.get('DEBUG', 'True') == 'True'
+DEBUG = config('DEBUG', default='True') == 'True'
 
-ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'web-production-69d231.up.railway.app,localhost,127.0.0.1').split(',')
+ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='web-production-69d231.up.railway.app,localhost,127.0.0.1').split(',')
 
 
 # Application definition
@@ -159,13 +160,13 @@ SIMPLE_JWT = {
 }
 
 # CORS — allow frontend origins
-CORS_ALLOWED_ORIGINS = os.environ.get('CORS_ALLOWED_ORIGINS',
-    'https://ssemata.github.io,https://kababoopishamie-oss.github.io,https://web-production-69d231.up.railway.app,http://localhost:5173,http://127.0.0.1:5173'
+CORS_ALLOWED_ORIGINS = config('CORS_ALLOWED_ORIGINS',
+    default='https://ssemata.github.io,https://kababoopishamie-oss.github.io,https://web-production-69d231.up.railway.app,http://localhost:5173,http://127.0.0.1:5173'
 ).split(',')
 
 # Weather API Configuration
 # Get your free API key from: https://openweathermap.org/api
-OPENWEATHER_API_KEY = os.environ.get('OPENWEATHER_API_KEY', '')
+OPENWEATHER_API_KEY = config('OPENWEATHER_API_KEY', default='')
 
 # Default location (latitude, longitude) - New York City
 DEFAULT_WEATHER_LOCATION = {

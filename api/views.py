@@ -25,7 +25,7 @@ class HealthCheckView(APIView):
 class DashboardView(APIView):
     def get(self, request):
         import urllib.request, json
-        from datetime import datetime
+        from datetime import datetime, timedelta
         from django.conf import settings as django_settings
 
         devices = Device.objects.filter(user=request.user)
@@ -87,19 +87,50 @@ class DashboardView(APIView):
         except Exception as e:
             print(f"Dashboard weather fetch error: {e}")
 
+        # Fetch latest sensor reading from the first online device
+        soil_moisture, water_tank_level, pump_status, irrigation_cycles = 0, 0, 'Off', 0
+        moisture_trend = []
+        irrigation_history = []
+
+        if online:
+            latest_reading = SensorReading.objects.filter(device=online).order_by('-recorded_at').first()
+            if latest_reading:
+                soil_moisture = latest_reading.soil_moisture or 0
+                water_tank_level = latest_reading.water_tank or 0
+                pump_status = latest_reading.pump_status
+                irrigation_cycles = latest_reading.irrig_cycles or 0
+
+            # Build moisture trend from last 24 readings
+            from django.utils import timezone
+            twenty_four_hours_ago = timezone.now() - timedelta(hours=24)
+            recent_readings = SensorReading.objects.filter(
+                device=online,
+                recorded_at__gte=twenty_four_hours_ago
+            ).order_by('recorded_at')[:24]
+
+            moisture_trend = [
+                {'time': r.recorded_at.strftime('%H:%M'), 'moisture': r.soil_moisture or 0}
+                for r in recent_readings
+            ]
+            irrigation_history = [
+                {'time': r.recorded_at.strftime('%H:%M'), 'cycles': r.irrig_cycles or 0}
+                for r in recent_readings
+            ]
+
         data = {
             'device_status':      online.status if online else 'Offline',
-            'soil_moisture':      0,
+            'soil_moisture':      soil_moisture,
             'temperature':        temperature,
             'humidity':           humidity,
             'wind_speed':         wind_speed,
             'rain_probability':   rain_probability,
             'weather_condition':  weather_condition,
-            'water_tank_level':   0,
-            'pump_status':        'Off',
-            'moisture_trend':     [],
+            'water_tank_level':   water_tank_level,
+            'pump_status':        pump_status,
+            'irrigation_cycles':  irrigation_cycles,
+            'moisture_trend':     moisture_trend,
             'temperature_trend':  temperature_trend,
-            'irrigation_history': [],
+            'irrigation_history': irrigation_history,
         }
         return Response(data)
 
