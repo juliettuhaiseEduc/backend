@@ -421,7 +421,6 @@ class WifiConfigureView(APIView):
 
 class WeatherView(APIView):
     def get(self, request):
-        from .models import WeatherAccessLog
         # Check if user has weather access
         if not getattr(request.user, 'weather_access', True):
             return Response({'detail': 'Weather access has been disabled for your account.'}, status=status.HTTP_403_FORBIDDEN)
@@ -739,7 +738,7 @@ class WeatherView(APIView):
 
         # Log this weather access
         try:
-            from .models import WeatherAccessLog
+            from api.models import WeatherAccessLog
             WeatherAccessLog.objects.create(
                 user=request.user,
                 lat=lat, lon=lon,
