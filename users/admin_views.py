@@ -26,6 +26,7 @@ class AdminUserListView(APIView):
                 'is_staff':     u.is_staff,
                 'is_active':    u.is_active,
                 'created_at':   u.created_at,
+                'last_seen':    u.last_seen,
                 'device_count': u.devices.count(),
                 'soil_type':    fs.soil_type    if fs else '',
                 'plant_type':   fs.plant_type   if fs else '',

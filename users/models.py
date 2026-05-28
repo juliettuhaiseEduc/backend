@@ -37,6 +37,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     can_manage_weather  = models.BooleanField(default=False)
     can_manage_system   = models.BooleanField(default=False)
     created_at   = models.DateTimeField(auto_now_add=True)
+    last_seen    = models.DateTimeField(null=True, blank=True)
 
     objects = UserManager()
 

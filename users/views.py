@@ -62,7 +62,11 @@ class LoginView(APIView):
     def post(self, request):
         serializer = LoginSerializer(data=request.data)
         if serializer.is_valid():
-            return Response(_token_response(serializer.validated_data['user']))
+            from django.utils import timezone
+            user = serializer.validated_data['user']
+            user.last_seen = timezone.now()
+            user.save(update_fields=['last_seen'])
+            return Response(_token_response(user))
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
