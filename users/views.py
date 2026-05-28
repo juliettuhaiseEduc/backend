@@ -70,6 +70,16 @@ class LoginView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
+class HeartbeatView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        from django.utils import timezone
+        request.user.last_seen = timezone.now()
+        request.user.save(update_fields=['last_seen'])
+        return Response({'ok': True})
+
+
 class SetPasswordView(APIView):
     """Called right after first login — sets permanent password, clears OTP flag."""
     permission_classes = [IsAuthenticated]
