@@ -7,7 +7,7 @@ from rest_framework.permissions import IsAdminUser
 from rest_framework import status
 from django.shortcuts import get_object_or_404
 from .models import User
-from api.models import Device, SensorReading
+from api.models import Device, SensorReading, FarmSettings
 
 
 class AdminUserListView(APIView):
@@ -15,8 +15,10 @@ class AdminUserListView(APIView):
 
     def get(self, request):
         users = User.objects.all().order_by('-id')
-        data = [
-            {
+        data = []
+        for u in users:
+            fs = FarmSettings.objects.filter(user=u).first()
+            data.append({
                 'id':           u.id,
                 'full_name':    u.full_name,
                 'email':        u.email,
@@ -25,9 +27,13 @@ class AdminUserListView(APIView):
                 'is_active':    u.is_active,
                 'created_at':   u.created_at,
                 'device_count': u.devices.count(),
-            }
-            for u in users
-        ]
+                'soil_type':    fs.soil_type    if fs else '',
+                'plant_type':   fs.plant_type   if fs else '',
+                'moisture_min': fs.moisture_min if fs else None,
+                'moisture_max': fs.moisture_max if fs else None,
+                'irrigation_duration': fs.irrigation_duration if fs else None,
+                'farm_notes':   fs.notes        if fs else '',
+            })
         return Response(data)
 
 
