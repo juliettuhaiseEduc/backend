@@ -28,6 +28,12 @@ class User(AbstractBaseUser, PermissionsMixin):
     is_active       = models.BooleanField(default=True)
     is_staff        = models.BooleanField(default=False)
     weather_access  = models.BooleanField(default=True)  # admin can revoke
+    admin_level     = models.CharField(max_length=20, default='user',
+                        choices=[('user','User'),('moderator','Moderator'),('admin','Admin'),('superadmin','Super Admin')])
+    can_manage_users    = models.BooleanField(default=False)
+    can_manage_devices  = models.BooleanField(default=False)
+    can_manage_weather  = models.BooleanField(default=False)
+    can_manage_system   = models.BooleanField(default=False)
     created_at   = models.DateTimeField(auto_now_add=True)
 
     objects = UserManager()

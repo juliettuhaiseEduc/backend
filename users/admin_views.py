@@ -3,7 +3,7 @@ import secrets
 import string
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework.permissions import IsAdminUser
+from rest_framework.permissions import IsAdminUser, AllowAny
 from rest_framework import status
 from django.shortcuts import get_object_or_404
 from .models import User
@@ -462,3 +462,140 @@ class AdminWeatherView(APIView):
         user.weather_access = bool(access)
         user.save(update_fields=['weather_access'])
         return Response({'id': user.id, 'weather_access': user.weather_access})
+
+
+class AdminSettingsView(APIView):
+    """System on/off + maintenance message + create/manage sub-admins"""
+    permission_classes = [IsAdminUser]
+
+    def get(self, request):
+        from api.models import SystemSettings
+        ss = SystemSettings.get()
+        admins = User.objects.filter(is_staff=True).order_by('full_name')
+        return Response({
+            'system': {
+                'online':               ss.system_online,
+                'maintenance_title':    ss.maintenance_title,
+                'maintenance_message':  ss.maintenance_message,
+                'maintenance_sub':      ss.maintenance_sub,
+                'updated_at':           ss.updated_at,
+                'updated_by':           ss.updated_by.full_name if ss.updated_by else None,
+            },
+            'admins': [
+                {
+                    'id':                 u.id,
+                    'full_name':          u.full_name,
+                    'email':              u.email or u.phone_number,
+                    'admin_level':        u.admin_level,
+                    'can_manage_users':   u.can_manage_users,
+                    'can_manage_devices': u.can_manage_devices,
+                    'can_manage_weather': u.can_manage_weather,
+                    'can_manage_system':  u.can_manage_system,
+                    'is_active':          u.is_active,
+                    'created_at':         u.created_at,
+                }
+                for u in admins
+            ],
+        })
+
+    def patch(self, request):
+        from api.models import SystemSettings
+        action = request.data.get('action')
+
+        if action == 'toggle_system':
+            ss = SystemSettings.get()
+            ss.system_online = request.data.get('online', not ss.system_online)
+            if 'maintenance_title'   in request.data: ss.maintenance_title   = request.data['maintenance_title']
+            if 'maintenance_message' in request.data: ss.maintenance_message = request.data['maintenance_message']
+            if 'maintenance_sub'     in request.data: ss.maintenance_sub     = request.data['maintenance_sub']
+            ss.updated_by = request.user
+            ss.save()
+            return Response({
+                'online':              ss.system_online,
+                'maintenance_title':   ss.maintenance_title,
+                'maintenance_message': ss.maintenance_message,
+                'maintenance_sub':     ss.maintenance_sub,
+            })
+
+        elif action == 'update_maintenance_text':
+            ss = SystemSettings.get()
+            if 'maintenance_title'   in request.data: ss.maintenance_title   = request.data['maintenance_title']
+            if 'maintenance_message' in request.data: ss.maintenance_message = request.data['maintenance_message']
+            if 'maintenance_sub'     in request.data: ss.maintenance_sub     = request.data['maintenance_sub']
+            ss.updated_by = request.user
+            ss.save()
+            return Response({'saved': True})
+
+        elif action == 'create_admin':
+            email    = request.data.get('email', '').strip()
+            phone    = request.data.get('phone_number', '').strip()
+            name     = request.data.get('full_name', '').strip()
+            password = request.data.get('password', '').strip()
+            level    = request.data.get('admin_level', 'moderator')
+            perms    = request.data.get('permissions', {})
+
+            if not name or not password:
+                return Response({'detail': 'full_name and password are required.'}, status=status.HTTP_400_BAD_REQUEST)
+            if not email and not phone:
+                return Response({'detail': 'Email or phone number is required.'}, status=status.HTTP_400_BAD_REQUEST)
+            if email and User.objects.filter(email=email).exists():
+                return Response({'detail': 'Email already in use.'}, status=status.HTTP_400_BAD_REQUEST)
+
+            user = User.objects.create_user(
+                password=password,
+                email=email or None,
+                phone_number=phone or None,
+                full_name=name,
+                is_staff=True,
+                admin_level=level,
+                can_manage_users=perms.get('users', False),
+                can_manage_devices=perms.get('devices', False),
+                can_manage_weather=perms.get('weather', False),
+                can_manage_system=perms.get('system', False),
+            )
+            return Response({
+                'id': user.id, 'full_name': user.full_name,
+                'email': user.email, 'admin_level': user.admin_level,
+            }, status=status.HTTP_201_CREATED)
+
+        elif action == 'update_admin':
+            uid   = request.data.get('user_id')
+            user  = get_object_or_404(User, pk=uid, is_staff=True)
+            level = request.data.get('admin_level')
+            perms = request.data.get('permissions', {})
+            if level: user.admin_level = level
+            if 'users'   in perms: user.can_manage_users   = perms['users']
+            if 'devices' in perms: user.can_manage_devices = perms['devices']
+            if 'weather' in perms: user.can_manage_weather = perms['weather']
+            if 'system'  in perms: user.can_manage_system  = perms['system']
+            user.save()
+            return Response({'id': user.id, 'admin_level': user.admin_level})
+
+        elif action == 'remove_admin':
+            uid  = request.data.get('user_id')
+            user = get_object_or_404(User, pk=uid)
+            if user == request.user:
+                return Response({'detail': 'Cannot demote yourself.'}, status=status.HTTP_400_BAD_REQUEST)
+            user.is_staff = False
+            user.admin_level = 'user'
+            user.can_manage_users = user.can_manage_devices = False
+            user.can_manage_weather = user.can_manage_system = False
+            user.save()
+            return Response({'id': user.id, 'demoted': True})
+
+        return Response({'detail': f'Unknown action: {action}'}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class SystemStatusView(APIView):
+    """Public endpoint — returns system online/offline status + maintenance message"""
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        from api.models import SystemSettings
+        ss = SystemSettings.get()
+        return Response({
+            'online':              ss.system_online,
+            'maintenance_title':   ss.maintenance_title,
+            'maintenance_message': ss.maintenance_message,
+            'maintenance_sub':     ss.maintenance_sub,
+        })

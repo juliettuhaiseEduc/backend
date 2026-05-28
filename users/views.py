@@ -18,7 +18,12 @@ def _token_response(user):
             'email':        user.email,
             'phone_number': user.phone_number,
             'is_staff':     user.is_staff,
-            'weather_access': getattr(user, 'weather_access', True),
+            'weather_access':     getattr(user, 'weather_access', True),
+            'admin_level':        getattr(user, 'admin_level', 'user'),
+            'can_manage_users':   getattr(user, 'can_manage_users', False),
+            'can_manage_devices': getattr(user, 'can_manage_devices', False),
+            'can_manage_weather': getattr(user, 'can_manage_weather', False),
+            'can_manage_system':  getattr(user, 'can_manage_system', False),
         },
     }
 

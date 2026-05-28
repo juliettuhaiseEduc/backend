@@ -4,7 +4,7 @@ from .admin_views import (
     AdminUserListView, AdminUserDetailView,
     AdminDeviceListView, AdminDeviceDetailView,
     AdminGenerateDeviceView, AdminDeviceStatsView, AdminDeviceFixView,
-    AdminWeatherView,
+    AdminWeatherView, AdminSettingsView, SystemStatusView,
 )
 
 urlpatterns = [
@@ -19,4 +19,6 @@ urlpatterns = [
     path('admin/devices/<int:pk>/stats/',   AdminDeviceStatsView.as_view(),   name='admin-device-stats'),
     path('admin/devices/<int:pk>/fix/',     AdminDeviceFixView.as_view(),     name='admin-device-fix'),
     path('admin/weather/',                  AdminWeatherView.as_view(),       name='admin-weather'),
+    path('admin/settings/',                 AdminSettingsView.as_view(),      name='admin-settings'),
+    path('system/status/',                  SystemStatusView.as_view(),       name='system-status'),
 ]
