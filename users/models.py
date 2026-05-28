@@ -25,8 +25,9 @@ class User(AbstractBaseUser, PermissionsMixin):
     full_name    = models.CharField(max_length=150)
     farm_name    = models.CharField(max_length=150, blank=True, default='')
     country      = models.CharField(max_length=100, blank=True, default='')
-    is_active    = models.BooleanField(default=True)
-    is_staff     = models.BooleanField(default=False)
+    is_active       = models.BooleanField(default=True)
+    is_staff        = models.BooleanField(default=False)
+    weather_access  = models.BooleanField(default=True)  # admin can revoke
     created_at   = models.DateTimeField(auto_now_add=True)
 
     objects = UserManager()

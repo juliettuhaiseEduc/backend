@@ -18,6 +18,7 @@ def _token_response(user):
             'email':        user.email,
             'phone_number': user.phone_number,
             'is_staff':     user.is_staff,
+            'weather_access': getattr(user, 'weather_access', True),
         },
     }
 

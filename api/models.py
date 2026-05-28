@@ -88,3 +88,19 @@ class Notification(models.Model):
 
     def __str__(self):
         return f'[{self.type}] {self.title}'
+
+
+class WeatherAccessLog(models.Model):
+    user       = models.ForeignKey(User, on_delete=models.CASCADE, related_name='weather_logs')
+    endpoint   = models.CharField(max_length=50, default='weather')
+    lat        = models.FloatField(null=True, blank=True)
+    lon        = models.FloatField(null=True, blank=True)
+    location   = models.CharField(max_length=200, blank=True)
+    success    = models.BooleanField(default=True)
+    accessed_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-accessed_at']
+
+    def __str__(self):
+        return f'{self.user} — {self.location} @ {self.accessed_at}'

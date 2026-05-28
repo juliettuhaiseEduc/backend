@@ -375,3 +375,90 @@ class AdminDeviceFixView(APIView):
             'crop_type':    device.crop_type,
             'soil_type':    device.soil_type,
         })
+
+
+class AdminWeatherView(APIView):
+    """Admin weather dashboard — status, usage logs, per-user access control"""
+    permission_classes = [IsAdminUser]
+
+    def get(self, request):
+        from django.conf import settings as django_settings
+        from api.models import WeatherAccessLog
+        from django.utils import timezone
+        from datetime import timedelta
+
+        api_key = getattr(django_settings, 'OPENWEATHER_API_KEY', '')
+        api_active = bool(api_key)
+
+        # Test the API key live
+        api_working = False
+        api_error   = ''
+        if api_active:
+            try:
+                import urllib.request, json
+                url = f'https://api.openweathermap.org/data/2.5/weather?lat=0&lon=0&appid={api_key}'
+                with urllib.request.urlopen(url, timeout=5) as r:
+                    d = json.loads(r.read().decode())
+                    api_working = 'weather' in d or 'main' in d
+            except Exception as e:
+                api_error = str(e)
+
+        # Usage stats
+        now   = timezone.now()
+        logs  = WeatherAccessLog.objects.all()
+        today = logs.filter(accessed_at__date=now.date()).count()
+        week  = logs.filter(accessed_at__gte=now - timedelta(days=7)).count()
+        total = logs.count()
+
+        # Recent 20 logs
+        recent = [
+            {
+                'user_name':  l.user.full_name,
+                'user_email': l.user.email or l.user.phone_number,
+                'location':   l.location,
+                'lat':        l.lat,
+                'lon':        l.lon,
+                'success':    l.success,
+                'accessed_at': l.accessed_at,
+            }
+            for l in logs[:20]
+        ]
+
+        # Per-user access list
+        users = User.objects.filter(is_staff=False).order_by('full_name')
+        user_access = [
+            {
+                'id':             u.id,
+                'full_name':      u.full_name,
+                'email':          u.email or u.phone_number,
+                'weather_access': getattr(u, 'weather_access', True),
+                'usage_count':    WeatherAccessLog.objects.filter(user=u).count(),
+                'last_used':      WeatherAccessLog.objects.filter(user=u).values_list('accessed_at', flat=True).first(),
+            }
+            for u in users
+        ]
+
+        return Response({
+            'api_key_set':   api_active,
+            'api_working':   api_working,
+            'api_error':     api_error,
+            'api_key_hint':  (api_key[:6] + '…' + api_key[-4:]) if len(api_key) > 10 else ('Not set' if not api_key else api_key),
+            'stats': {
+                'today': today,
+                'week':  week,
+                'total': total,
+            },
+            'recent_logs':  recent,
+            'user_access':  user_access,
+        })
+
+    def patch(self, request):
+        """Toggle weather access for a specific user"""
+        user_id = request.data.get('user_id')
+        access  = request.data.get('weather_access')
+        if user_id is None or access is None:
+            return Response({'detail': 'user_id and weather_access required.'}, status=status.HTTP_400_BAD_REQUEST)
+        user = get_object_or_404(User, pk=user_id)
+        user.weather_access = bool(access)
+        user.save(update_fields=['weather_access'])
+        return Response({'id': user.id, 'weather_access': user.weather_access})
