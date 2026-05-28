@@ -111,10 +111,23 @@ class AdminGenerateDeviceView(APIView):
         while Device.objects.filter(pairing_code=pairing_code).exists():
             pairing_code = gen_pairing_code()
 
+        secret_key = gen_secret_key()
+
+        # Save the device record so users can pair it later
+        Device.objects.create(
+            user=request.user,
+            device_id=device_id,
+            pairing_code=pairing_code,
+            secret_key=secret_key,
+            device_name=f'Device {device_id}',
+            is_paired=False,
+            status='Offline',
+        )
+
         return Response({
             'device_id':    device_id,
             'pairing_code': pairing_code,
-            'secret_key':   gen_secret_key(),
+            'secret_key':   secret_key,
         }, status=status.HTTP_200_OK)
 
 
