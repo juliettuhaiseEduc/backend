@@ -49,6 +49,23 @@ class FarmSettings(models.Model):
         return f'{self.user.email} — {self.plant_type or "No plant set"}'
 
 
+class SensorReading(models.Model):
+    device     = models.ForeignKey(Device, on_delete=models.CASCADE, related_name='readings')
+    soil_moisture  = models.FloatField(null=True, blank=True)
+    temperature    = models.FloatField(null=True, blank=True)
+    humidity       = models.FloatField(null=True, blank=True)
+    water_tank     = models.FloatField(null=True, blank=True)
+    pump_status    = models.CharField(max_length=20, default='Off')
+    irrig_cycles   = models.PositiveIntegerField(default=0)
+    recorded_at    = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-recorded_at']
+
+    def __str__(self):
+        return f'{self.device.device_name} @ {self.recorded_at}'
+
+
 class Notification(models.Model):
     TYPE_CHOICES = [
         ('pump',    'Pump'),

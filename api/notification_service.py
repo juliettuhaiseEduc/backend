@@ -75,3 +75,21 @@ def irrigation_stopped(user, device_name=''):
         'Irrigation has been stopped. All scheduled pump cycles for today have been cancelled.',
         device_name, dedupe_minutes=5,
     )
+
+
+def check_sensor_thresholds(device, reading):
+    """Auto-notify when sensor readings cross critical thresholds."""
+    user = device.user
+    name = device.device_name
+    if reading.soil_moisture is not None and reading.soil_moisture < 20:
+        notify(user, 'sensor', '🌱 Soil Moisture Critical',
+               f'Soil moisture is {reading.soil_moisture:.1f}% — below the critical threshold of 20%. Irrigation recommended.',
+               name, dedupe_minutes=30)
+    if reading.water_tank is not None and reading.water_tank < 15:
+        notify(user, 'water', '💧 Water Tank Low',
+               f'Water tank is at {reading.water_tank:.1f}% — nearly empty. Please refill.',
+               name, dedupe_minutes=60)
+    if reading.temperature is not None and reading.temperature > 35:
+        notify(user, 'weather', '🌡️ High Temperature Alert',
+               f'Temperature is {reading.temperature:.1f}°C — consider increasing irrigation frequency.',
+               name, dedupe_minutes=60)

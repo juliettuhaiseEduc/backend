@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Device, Notification, FarmSettings
+from .models import Device, Notification, FarmSettings, SensorReading
 
 
 class DeviceSerializer(serializers.ModelSerializer):
@@ -84,6 +84,40 @@ class NotificationSerializer(serializers.ModelSerializer):
         model  = Notification
         fields = ['id', 'type', 'title', 'message', 'device_name', 'is_read', 'created_at']
         read_only_fields = ['id', 'created_at']
+
+
+class SensorReadingSerializer(serializers.ModelSerializer):
+    device_name = serializers.CharField(source='device.device_name', read_only=True)
+    device_id   = serializers.CharField(source='device.device_id',   read_only=True)
+
+    class Meta:
+        model  = SensorReading
+        fields = [
+            'id', 'device_id', 'device_name',
+            'soil_moisture', 'temperature', 'humidity',
+            'water_tank', 'pump_status', 'irrig_cycles', 'recorded_at',
+        ]
+        read_only_fields = ['id', 'recorded_at', 'device_name', 'device_id']
+
+
+class SensorIngestSerializer(serializers.Serializer):
+    """Used by hardware to POST sensor data"""
+    device_id     = serializers.CharField(max_length=100)
+    secret_key    = serializers.CharField(max_length=255)
+    soil_moisture = serializers.FloatField(required=False, allow_null=True)
+    temperature   = serializers.FloatField(required=False, allow_null=True)
+    humidity      = serializers.FloatField(required=False, allow_null=True)
+    water_tank    = serializers.FloatField(required=False, allow_null=True)
+    pump_status   = serializers.CharField(max_length=20, default='Off')
+    irrig_cycles  = serializers.IntegerField(default=0)
+
+    def validate(self, attrs):
+        try:
+            device = Device.objects.get(device_id=attrs['device_id'], secret_key=attrs['secret_key'])
+        except Device.DoesNotExist:
+            raise serializers.ValidationError('Invalid device_id or secret_key.')
+        attrs['device'] = device
+        return attrs
 
 
 class FarmSettingsSerializer(serializers.ModelSerializer):

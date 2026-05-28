@@ -5,6 +5,7 @@ from .views import (
     NotificationListView, NotificationDetailView, NotificationMarkAllReadView,
     WifiStatusView, WifiScanView, WifiConfigureView,
     FarmSettingsView, PairDeviceView, TestDeviceView,
+    SensorIngestView, LiveDataView, PumpControlView,
 )
 
 urlpatterns = [
@@ -17,6 +18,9 @@ urlpatterns = [
     path('device/connect/',                ConnectDeviceView.as_view(),            name='device-connect'),
     path('device/pair/',                   PairDeviceView.as_view(),               name='device-pair'),
     path('device/test/',                   TestDeviceView.as_view(),               name='device-test'),
+    path('sensor/ingest/',                 SensorIngestView.as_view(),             name='sensor-ingest'),
+    path('live-data/',                     LiveDataView.as_view(),                 name='live-data'),
+    path('pump/control/',                  PumpControlView.as_view(),              name='pump-control'),
     path('notifications/',                 NotificationListView.as_view(),         name='notification-list'),
     path('notifications/mark-all-read/',   NotificationMarkAllReadView.as_view(),  name='notification-mark-all'),
     path('notifications/<int:pk>/',        NotificationDetailView.as_view(),       name='notification-detail'),

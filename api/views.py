@@ -3,10 +3,11 @@ from rest_framework.response import Response
 from rest_framework.permissions import AllowAny
 from rest_framework import status
 from django.shortcuts import get_object_or_404
-from .models import Device, Notification, FarmSettings
+from .models import Device, Notification, FarmSettings, SensorReading
 from .serializers import (
-    DeviceSerializer, ConnectDeviceSerializer, NotificationSerializer, 
-    FarmSettingsSerializer, PairDeviceSerializer, TestDeviceSerializer
+    DeviceSerializer, ConnectDeviceSerializer, NotificationSerializer,
+    FarmSettingsSerializer, PairDeviceSerializer, TestDeviceSerializer,
+    SensorReadingSerializer, SensorIngestSerializer,
 )
 from . import notification_service as ns
 
@@ -215,6 +216,85 @@ class FarmSettingsView(APIView):
             serializer.save()
             return Response(serializer.data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class SensorIngestView(APIView):
+    """Hardware POSTs readings here — no user auth, uses device secret_key"""
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        from django.utils import timezone
+        serializer = SensorIngestSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        d = serializer.validated_data
+        device = d['device']
+        reading = SensorReading.objects.create(
+            device=device,
+            soil_moisture=d.get('soil_moisture'),
+            temperature=d.get('temperature'),
+            humidity=d.get('humidity'),
+            water_tank=d.get('water_tank'),
+            pump_status=d.get('pump_status', 'Off'),
+            irrig_cycles=d.get('irrig_cycles', 0),
+        )
+        device.status    = 'Online'
+        device.last_seen = timezone.now()
+        device.save(update_fields=['status', 'last_seen'])
+        # Auto-create notifications for critical thresholds
+        ns.check_sensor_thresholds(device, reading)
+        return Response({'status': 'ok', 'id': reading.id}, status=status.HTTP_201_CREATED)
+
+
+class LiveDataView(APIView):
+    """Returns latest reading + history for the user's devices"""
+
+    def get(self, request):
+        device_id = request.GET.get('device_id')
+        devices   = Device.objects.filter(user=request.user)
+        if device_id:
+            devices = devices.filter(device_id=device_id)
+
+        # Latest reading per device
+        latest = []
+        for dev in devices:
+            r = SensorReading.objects.filter(device=dev).first()
+            if r:
+                latest.append(SensorReadingSerializer(r).data)
+
+        # History: last 50 readings across all user devices
+        qs = SensorReading.objects.filter(device__in=devices).order_by('recorded_at')[:50]
+        history = SensorReadingSerializer(qs, many=True).data
+
+        # Device list for selector
+        device_list = DeviceSerializer(devices, many=True).data
+
+        return Response({
+            'devices':  device_list,
+            'latest':   latest,
+            'history':  history,
+        })
+
+
+class PumpControlView(APIView):
+    """Manually toggle pump for a device"""
+
+    def post(self, request):
+        device_id  = request.data.get('device_id')
+        pump_on    = request.data.get('pump_on', False)
+        device     = get_object_or_404(Device, device_id=device_id, user=request.user)
+        # Record a synthetic reading reflecting the manual pump change
+        last = SensorReading.objects.filter(device=device).first()
+        SensorReading.objects.create(
+            device=device,
+            soil_moisture=last.soil_moisture if last else None,
+            temperature=last.temperature   if last else None,
+            humidity=last.humidity         if last else None,
+            water_tank=last.water_tank     if last else None,
+            pump_status='Running' if pump_on else 'Off',
+            irrig_cycles=(last.irrig_cycles + (1 if pump_on else 0)) if last else (1 if pump_on else 0),
+        )
+        return Response({'status': 'ok', 'pump_status': 'Running' if pump_on else 'Off'})
 
 
 class WifiStatusView(APIView):
