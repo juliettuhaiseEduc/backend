@@ -278,3 +278,100 @@ class AdminDeviceStatsView(APIView):
             'total_readings': total,
             'diagnostics':    issues,
         })
+
+
+class AdminDeviceFixView(APIView):
+    """Admin takes control: fix device config, force pair, reset, update crop/soil"""
+    permission_classes = [IsAdminUser]
+
+    def patch(self, request, pk):
+        from django.utils import timezone
+        device = get_object_or_404(Device, pk=pk)
+        action = request.data.get('action')
+        log = []
+
+        if action == 'force_pair':
+            # Assign device to a specific user and mark as paired
+            user_id = request.data.get('user_id')
+            if user_id:
+                target = get_object_or_404(User, pk=user_id)
+                device.user      = target
+                device.is_paired = True
+                device.paired_at = timezone.now()
+                device.save(update_fields=['user', 'is_paired', 'paired_at'])
+                log.append(f'Device force-paired to {target.full_name}.')
+            else:
+                return Response({'detail': 'user_id required for force_pair.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        elif action == 'unpair':
+            # Reset pairing so user can re-pair
+            device.is_paired = False
+            device.paired_at = None
+            device.status    = 'Offline'
+            device.save(update_fields=['is_paired', 'paired_at', 'status'])
+            log.append('Device unpaired. User can now re-pair with the same credentials.')
+
+        elif action == 'reset_credentials':
+            # Generate new pairing code and secret key
+            chars = __import__('string').ascii_uppercase + __import__('string').digits
+            new_pairing = ''.join(__import__('secrets').choice(chars) for _ in range(6))
+            while Device.objects.filter(pairing_code=new_pairing).exclude(pk=pk).exists():
+                new_pairing = ''.join(__import__('secrets').choice(chars) for _ in range(6))
+            new_secret = __import__('secrets').token_hex(32)
+            device.pairing_code = new_pairing
+            device.secret_key   = new_secret
+            device.is_paired    = False
+            device.paired_at    = None
+            device.save(update_fields=['pairing_code', 'secret_key', 'is_paired', 'paired_at'])
+            log.append(f'Credentials reset. New pairing code: {new_pairing}')
+
+        elif action == 'update_config':
+            # Update device name, crop type, soil type
+            fields = []
+            for field in ['device_name', 'crop_type', 'soil_type']:
+                val = request.data.get(field)
+                if val is not None:
+                    setattr(device, field, val)
+                    fields.append(field)
+            if fields:
+                device.save(update_fields=fields)
+                log.append(f'Updated: {", ".join(fields)}.')
+
+        elif action == 'force_online':
+            device.status    = 'Online'
+            device.last_seen = timezone.now()
+            device.save(update_fields=['status', 'last_seen'])
+            log.append('Device status forced to Online.')
+
+        elif action == 'force_offline':
+            device.status = 'Offline'
+            device.save(update_fields=['status'])
+            log.append('Device status forced to Offline.')
+
+        elif action == 'update_farm_settings':
+            # Admin updates the user's farm settings on their behalf
+            fs, _ = FarmSettings.objects.get_or_create(user=device.user)
+            fields = []
+            for field in ['soil_type', 'plant_type', 'moisture_min', 'moisture_max',
+                          'moisture_critical_low', 'irrigation_duration', 'notes']:
+                val = request.data.get(field)
+                if val is not None:
+                    setattr(fs, field, val)
+                    fields.append(field)
+            if fields:
+                fs.save(update_fields=fields)
+                log.append(f'Farm settings updated for {device.user.full_name}: {", ".join(fields)}.')
+        else:
+            return Response({'detail': f'Unknown action: {action}'}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response({
+            'success': True,
+            'log':     log,
+            'device_id':    device.device_id,
+            'device_name':  device.device_name,
+            'is_paired':    device.is_paired,
+            'status':       device.status,
+            'pairing_code': device.pairing_code,
+            'crop_type':    device.crop_type,
+            'soil_type':    device.soil_type,
+        })

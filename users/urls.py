@@ -3,7 +3,7 @@ from .views import SignupView, LoginView, CheckIdentifierView
 from .admin_views import (
     AdminUserListView, AdminUserDetailView,
     AdminDeviceListView, AdminDeviceDetailView,
-    AdminGenerateDeviceView, AdminDeviceStatsView,
+    AdminGenerateDeviceView, AdminDeviceStatsView, AdminDeviceFixView,
 )
 
 urlpatterns = [
@@ -16,4 +16,5 @@ urlpatterns = [
     path('admin/devices/generate/',         AdminGenerateDeviceView.as_view(),name='admin-device-generate'),
     path('admin/devices/<int:pk>/',         AdminDeviceDetailView.as_view(),  name='admin-device-detail'),
     path('admin/devices/<int:pk>/stats/',   AdminDeviceStatsView.as_view(),   name='admin-device-stats'),
+    path('admin/devices/<int:pk>/fix/',     AdminDeviceFixView.as_view(),     name='admin-device-fix'),
 ]
