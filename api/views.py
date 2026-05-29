@@ -23,6 +23,13 @@ class HealthCheckView(APIView):
         return Response()
 
 
+class SystemStatusView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        return Response({'online': True})
+
+
 class DashboardView(APIView):
     def get(self, request):
         from datetime import datetime, timedelta
