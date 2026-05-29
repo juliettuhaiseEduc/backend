@@ -106,6 +106,28 @@ class WeatherAccessLog(models.Model):
         return f'{self.user} — {self.location} @ {self.accessed_at}'
 
 
+class DailyAgriLog(models.Model):
+    """
+    One row per user per day — feeds seasonal learning.
+    Written automatically on each weather fetch.
+    """
+    user          = models.ForeignKey(User, on_delete=models.CASCADE, related_name='agri_logs')
+    date          = models.DateField()
+    season        = models.CharField(max_length=30, blank=True)
+    avg_temp      = models.FloatField(null=True, blank=True)
+    avg_moisture  = models.FloatField(null=True, blank=True)
+    total_rain_mm = models.FloatField(default=0.0)
+    water_used_l  = models.FloatField(default=0.0)
+    rain_prob     = models.FloatField(default=0.0)
+
+    class Meta:
+        unique_together = ('user', 'date')
+        ordering = ['-date']
+
+    def __str__(self):
+        return f'{self.user} — {self.date} ({self.season})'
+
+
 class SystemSettings(models.Model):
     """Singleton — only one row ever exists (pk=1)"""
     system_online        = models.BooleanField(default=True)

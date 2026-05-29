@@ -3,7 +3,8 @@ from rest_framework.response import Response
 from rest_framework.permissions import AllowAny
 from rest_framework import status
 from django.shortcuts import get_object_or_404
-from .models import Device, Notification, FarmSettings, SensorReading
+from .models import Device, Notification, FarmSettings, SensorReading, DailyAgriLog
+from .intelligence import detect_season, get_crop_profile, compute_drying_rate, compute_smart_irrigation
 from .serializers import (
     DeviceSerializer, ConnectDeviceSerializer, NotificationSerializer,
     FarmSettingsSerializer, PairDeviceSerializer, TestDeviceSerializer,
@@ -656,69 +657,35 @@ class WeatherView(APIView):
         }
         soil = SOIL.get(soil_type, SOIL['Loam'])
 
-        PLANT_DEMAND = {
-            'tomato': 6.0, 'tomatoes': 6.0, 'maize': 5.5, 'corn': 5.5,
-            'rice': 8.0, 'wheat': 4.0, 'potato': 5.0, 'potatoes': 5.0,
-            'bean': 4.5, 'beans': 4.5, 'cabbage': 4.0, 'onion': 3.5,
-            'onions': 3.5, 'carrot': 3.5, 'carrots': 3.5, 'lettuce': 3.0,
-            'grass': 2.5, 'lawn': 2.5, 'general': 4.0,
-        }
-        
-        plant_demand_base = 4.0
-        for key, val in PLANT_DEMAND.items():
-            if key in plant_type:
-                plant_demand_base = val
-                break
-
         PUMP_FLOW_RATE = 10
 
-        def irrigation_plan(condition, temp_high, rain_prob):
-            if rain_prob >= 70 or condition == 'rainy':
-                return {
-                    'cycles': 0, 'duration_min': 0, 'total_min': 0,
-                    'pump_times': [], 'skip': True,
-                    'reason': f'Skip — {"heavy rain expected" if rain_prob >= 70 else "rainy conditions"}',
-                    'water_per_cycle_l': 0, 'water_total_l': 0,
-                    'rain_saving_l': 0, 'estimated_need_l': 0,
-                }
+        # ── Intelligence: season, crop profile, drying rate ──────────────
+        from django.utils import timezone as tz
+        today_eat = datetime.now()  # server is EAT or we use month directly
+        season      = detect_season(today_eat.month)
+        crop_profile = get_crop_profile(plant_type)
 
-            duration = round(base_duration * soil['water_factor'])
+        # Fetch last 30 daily logs for drying rate analysis
+        recent_logs = list(
+            DailyAgriLog.objects
+            .filter(user=request.user)
+            .order_by('date')
+            .values('avg_moisture', 'avg_temp', 'total_rain_mm')[:30]
+        )
+        drying = compute_drying_rate(recent_logs)
 
-            if temp_high >= 32:
-                temp_factor, cycles, reason = 1.4, 3, 'Very hot — maximum irrigation'
-            elif temp_high >= 28:
-                temp_factor, cycles, reason = 1.2, 3, 'Hot day — extra irrigation needed'
-            elif temp_high >= 24:
-                temp_factor, cycles, reason = 1.0, 2, 'Warm day — normal irrigation'
-            else:
-                temp_factor, cycles, reason = 0.8, 1, 'Cool day — reduced irrigation'
-                duration = round(duration * 0.8)
-
-            if rain_prob >= 40:
-                cycles = max(1, cycles - 1)
-                duration = round(duration * 0.7)
-                reason = 'Partial rain — reduced irrigation'
-            elif rain_prob >= 20:
-                duration = round(duration * 0.85)
-                reason += ', light rain expected'
-
-            if condition == 'windy':
-                duration = round(duration * 1.1)
-                reason = 'Windy — slight increase for evaporation'
-
-            daily_demand = plant_demand_base * temp_factor * soil['water_factor']
-            rain_saving = round((rain_prob / 100) * daily_demand, 1)
-            water_per_cycle = round(duration * PUMP_FLOW_RATE, 1)
-            water_total = round(cycles * water_per_cycle, 1)
-            estimated_need = round((daily_demand - rain_saving) * 10, 1)
-
-            return {
-                'cycles': cycles, 'duration_min': duration,
-                'total_min': cycles * duration, 'pump_times': ['06:00', '12:00', '18:00'][:cycles],
-                'skip': False, 'reason': reason,
-                'water_per_cycle_l': water_per_cycle, 'water_total_l': water_total,
-                'rain_saving_l': rain_saving * 10, 'estimated_need_l': estimated_need,
-            }
+        def irrigation_plan(condition, temp, rain_prob):
+            return compute_smart_irrigation(
+                temp=temp,
+                rain_prob=rain_prob,
+                condition=condition,
+                soil_water_factor=soil['water_factor'],
+                base_duration=base_duration,
+                crop_profile=crop_profile,
+                season=season,
+                drying=drying,
+                recent_logs=recent_logs,
+            )
 
         # Calculate irrigation plans
         for day_data in forecast_list:
@@ -726,10 +693,32 @@ class WeatherView(APIView):
             day_data['irrigation'] = plan
 
         today_plan = irrigation_plan(
-            current_weather['condition'], current_weather['temperature'], 
+            current_weather['condition'], current_weather['temperature'],
             current_weather.get('rain_probability', 0)
         )
         current_weather['irrigation'] = today_plan
+
+        # ── Write / update today's DailyAgriLog ───────────────────────────
+        try:
+            log_date = today_eat.date()
+            log, _ = DailyAgriLog.objects.get_or_create(
+                user=request.user, date=log_date,
+                defaults={'season': season['key']}
+            )
+            log.avg_temp     = current_weather['temperature']
+            log.rain_prob    = current_weather.get('rain_probability', 0)
+            log.total_rain_mm = round(today_plan.get('rain_saving_l', 0) / 10, 2)
+            log.water_used_l  = today_plan.get('water_total_l', 0)
+            log.season        = season['key']
+            # avg_moisture from latest sensor reading if available
+            device = Device.objects.filter(user=request.user, status='Online').first()
+            if device:
+                latest = SensorReading.objects.filter(device=device).first()
+                if latest and latest.soil_moisture is not None:
+                    log.avg_moisture = latest.soil_moisture
+            log.save()
+        except Exception as e:
+            print(f'DailyAgriLog write error: {e}')
 
         hourly = parse_hourly(forecast_data, today_plan)
 
@@ -752,6 +741,18 @@ class WeatherView(APIView):
             'current': current_weather,
             'hourly': hourly,
             'forecast': forecast_list,
+            'intelligence': {
+                'season': season,
+                'crop': {
+                    'key': crop_profile['key'],
+                    'label': crop_profile['label'],
+                    'stress_temp': crop_profile['stress_temp_high'],
+                    'stress_moisture': crop_profile['stress_moisture_low'],
+                    'season_factor': crop_profile['season_adjust'].get(season['key'], 1.0),
+                },
+                'drying': drying,
+                'log_count': len(recent_logs),
+            },
             'irrigation_settings': {
                 'base_duration_min': base_duration,
                 'soil_type': soil_type,
@@ -760,6 +761,61 @@ class WeatherView(APIView):
                 'weekly_water_l': weekly_water,
                 'weekly_saving_l': weekly_saving,
             },
+        })
+
+
+class IntelligenceView(APIView):
+    """Returns seasonal learning summary and crop intelligence for the frontend."""
+
+    def get(self, request):
+        from datetime import datetime
+        from .intelligence import detect_season, get_crop_profile, compute_drying_rate
+
+        settings_obj, _ = FarmSettings.objects.get_or_create(user=request.user)
+        plant_type = (settings_obj.plant_type or 'general').strip().lower()
+
+        season = detect_season(datetime.now().month)
+        crop_profile = get_crop_profile(plant_type)
+
+        recent_logs = list(
+            DailyAgriLog.objects
+            .filter(user=request.user)
+            .order_by('date')
+            .values('date', 'avg_moisture', 'avg_temp', 'total_rain_mm', 'water_used_l', 'season')[:30]
+        )
+        drying = compute_drying_rate(recent_logs)
+
+        # Season history: group water_used_l by season
+        from django.db.models import Avg, Sum
+        season_summary = (
+            DailyAgriLog.objects
+            .filter(user=request.user)
+            .values('season')
+            .annotate(avg_temp=Avg('avg_temp'), avg_moisture=Avg('avg_moisture'), total_water=Sum('water_used_l'))
+        )
+
+        return Response({
+            'season': season,
+            'crop': {
+                'key': crop_profile['key'],
+                'label': crop_profile['label'],
+                'stress_temp': crop_profile['stress_temp_high'],
+                'stress_moisture': crop_profile['stress_moisture_low'],
+                'water_demand_l_day': crop_profile['water_demand_l_day'],
+                'season_factor': crop_profile['season_adjust'].get(season['key'], 1.0),
+                'all_season_factors': crop_profile['season_adjust'],
+            },
+            'drying': drying,
+            'season_history': list(season_summary),
+            'recent_logs': [
+                {
+                    'date': str(l['date']), 'season': l['season'],
+                    'avg_temp': l['avg_temp'], 'avg_moisture': l['avg_moisture'],
+                    'total_rain_mm': l['total_rain_mm'], 'water_used_l': l['water_used_l'],
+                }
+                for l in recent_logs
+            ],
+            'log_count': len(recent_logs),
         })
 
 
