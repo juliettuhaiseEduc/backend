@@ -168,6 +168,11 @@ CORS_ALLOWED_ORIGINS = config('CORS_ALLOWED_ORIGINS',
 # Get your free API key from: https://openweathermap.org/api
 OPENWEATHER_API_KEY = config('OPENWEATHER_API_KEY', default='')
 
+# Redis Configuration (optional - falls back to in-memory cache if not available)
+# For Railway: Add Redis plugin and it will auto-populate REDIS_URL
+# For local dev: redis://localhost:6379/0
+REDIS_URL = config('REDIS_URL', default=None)
+
 # Default location (latitude, longitude) - New York City
 DEFAULT_WEATHER_LOCATION = {
     'lat': 40.7128,

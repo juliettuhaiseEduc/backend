@@ -25,15 +25,13 @@ class HealthCheckView(APIView):
 
 class DashboardView(APIView):
     def get(self, request):
-        import urllib.request, json
         from datetime import datetime, timedelta
         from django.conf import settings as django_settings
+        from .weather_cache import fetch_weather_with_cache
 
         devices = Device.objects.filter(user=request.user)
         online  = devices.filter(status='Online').first()
 
-        # Fetch live weather for accurate KPI values
-        api_key  = getattr(django_settings, 'OPENWEATHER_API_KEY', '')
         location = getattr(django_settings, 'DEFAULT_WEATHER_LOCATION', {'lat': 40.7128, 'lon': -74.0060})
         lat = float(request.GET.get('lat', location['lat']))
         lon = float(request.GET.get('lon', location['lon']))
@@ -42,48 +40,43 @@ class DashboardView(APIView):
         temperature_trend = []
 
         try:
-            current_url  = f"https://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&appid={api_key}&units=metric"
-            forecast_url = f"https://api.openweathermap.org/data/2.5/forecast?lat={lat}&lon={lon}&appid={api_key}&units=metric"
+            cw, fc = fetch_weather_with_cache(lat, lon)
 
-            with urllib.request.urlopen(current_url, timeout=8) as r:
-                cw = json.loads(r.read().decode())
-            with urllib.request.urlopen(forecast_url, timeout=8) as r:
-                fc = json.loads(r.read().decode())
+            if cw and fc:
+                main    = cw.get('main', {})
+                weather = cw.get('weather', [{}])[0]
+                wind    = cw.get('wind', {})
 
-            main    = cw.get('main', {})
-            weather = cw.get('weather', [{}])[0]
-            wind    = cw.get('wind', {})
+                condition_map = {
+                    'clear sky': 'Sunny', 'few clouds': 'Partly Cloudy',
+                    'scattered clouds': 'Partly Cloudy', 'broken clouds': 'Cloudy',
+                    'overcast clouds': 'Cloudy', 'shower rain': 'Rainy',
+                    'rain': 'Rainy', 'thunderstorm': 'Stormy', 'snow': 'Snowy',
+                    'mist': 'Foggy', 'fog': 'Foggy', 'light rain': 'Rainy',
+                    'moderate rain': 'Rainy', 'drizzle': 'Rainy',
+                }
+                desc = weather.get('description', '').lower()
+                temperature       = round(main.get('temp', 0))
+                humidity          = main.get('humidity', 0)
+                wind_speed        = round(wind.get('speed', 0) * 3.6)
+                weather_condition = condition_map.get(desc, weather.get('description', '—').title())
 
-            condition_map = {
-                'clear sky': 'Sunny', 'few clouds': 'Partly Cloudy',
-                'scattered clouds': 'Partly Cloudy', 'broken clouds': 'Cloudy',
-                'overcast clouds': 'Cloudy', 'shower rain': 'Rainy',
-                'rain': 'Rainy', 'thunderstorm': 'Stormy', 'snow': 'Snowy',
-                'mist': 'Foggy', 'fog': 'Foggy', 'light rain': 'Rainy',
-                'moderate rain': 'Rainy', 'drizzle': 'Rainy',
-            }
-            desc = weather.get('description', '').lower()
-            temperature       = round(main.get('temp', 0))
-            humidity          = main.get('humidity', 0)
-            wind_speed        = round(wind.get('speed', 0) * 3.6)
-            weather_condition = condition_map.get(desc, weather.get('description', '—').title())
+                # Build temperature trend from next 8 forecast slots (3-hour intervals)
+                for item in fc.get('list', [])[:8]:
+                    dt = datetime.fromtimestamp(item['dt'])
+                    temperature_trend.append({
+                        'time':        dt.strftime('%H:%M'),
+                        'temperature': round(item['main']['temp']),
+                        'humidity':    item['main']['humidity'],
+                    })
 
-            # Build temperature trend from next 8 forecast slots (3-hour intervals)
-            for item in fc.get('list', [])[:8]:
-                dt = datetime.fromtimestamp(item['dt'])
-                temperature_trend.append({
-                    'time':        dt.strftime('%H:%M'),
-                    'temperature': round(item['main']['temp']),
-                    'humidity':    item['main']['humidity'],
-                })
-
-            # Rain probability from first forecast slot
-            if fc.get('list'):
-                first = fc['list'][0]
-                if 'rain' in first:
-                    rain_probability = min(100, round(first['rain'].get('3h', 0) * 20))
-                elif weather_condition in ('Rainy', 'Stormy'):
-                    rain_probability = 70
+                # Rain probability from first forecast slot
+                if fc.get('list'):
+                    first = fc['list'][0]
+                    if 'rain' in first:
+                        rain_probability = min(100, round(first['rain'].get('3h', 0) * 20))
+                    elif weather_condition in ('Rainy', 'Stormy'):
+                        rain_probability = 70
 
         except Exception as e:
             print(f"Dashboard weather fetch error: {e}")
@@ -366,6 +359,7 @@ class WifiConfigureView(APIView):
         })
 
 
+class WeatherLocationSettingsView(APIView):
     """Get or set weather location for the user"""
     def get(self, request):
         from django.conf import settings as django_settings
@@ -449,23 +443,6 @@ class WeatherView(APIView):
         api_key = getattr(django_settings, 'OPENWEATHER_API_KEY', '')
         base_url = 'https://api.openweathermap.org/data/2.5'
         
-        def get_weather_data():
-            """Fetch real weather data with fallback"""
-            try:
-                # Current weather
-                current_url = f"{base_url}/weather?lat={lat}&lon={lon}&appid={api_key}&units=metric"
-                with urllib.request.urlopen(current_url, timeout=10) as response:
-                    current_data = json.loads(response.read().decode())
-                
-                # Forecast
-                forecast_url = f"{base_url}/forecast?lat={lat}&lon={lon}&appid={api_key}&units=metric"
-                with urllib.request.urlopen(forecast_url, timeout=10) as response:
-                    forecast_data = json.loads(response.read().decode())
-                
-                return current_data, forecast_data
-            except Exception as e:
-                print(f"Weather API error: {e}")
-                return None, None
         
         def parse_current_weather(data):
             """Parse current weather API response"""
@@ -643,8 +620,9 @@ class WeatherView(APIView):
                 })
             return hours
 
-        # Fetch weather data
-        current_data, forecast_data = get_weather_data()
+        # Fetch weather data (served from cache when available)
+        from .weather_cache import fetch_weather_with_cache
+        current_data, forecast_data = fetch_weather_with_cache(lat, lon)
         current_weather = parse_current_weather(current_data)
         forecast_list = parse_forecast(forecast_data)
         
