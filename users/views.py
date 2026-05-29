@@ -70,6 +70,29 @@ class LoginView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
+class MeView(APIView):
+    """Returns the authenticated user's profile from the database — never from client input."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        return Response({
+            'id':                   user.id,
+            'full_name':            user.full_name,
+            'email':                user.email,
+            'phone_number':         user.phone_number,
+            'farm_name':            user.farm_name,
+            'is_staff':             user.is_staff,
+            'must_change_password': user.must_change_password,
+            'weather_access':       user.weather_access,
+            'admin_level':          user.admin_level,
+            'can_manage_users':     user.can_manage_users,
+            'can_manage_devices':   user.can_manage_devices,
+            'can_manage_weather':   user.can_manage_weather,
+            'can_manage_system':    user.can_manage_system,
+        })
+
+
 class HeartbeatView(APIView):
     permission_classes = [IsAuthenticated]
 

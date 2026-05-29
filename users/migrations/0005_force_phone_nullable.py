@@ -8,8 +8,4 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RunSQL(
-            sql='ALTER TABLE users_user ALTER COLUMN phone_number DROP NOT NULL;',
-            reverse_sql=migrations.RunSQL.noop,
-        ),
     ]

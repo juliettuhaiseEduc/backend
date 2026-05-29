@@ -214,6 +214,12 @@ class TestDeviceView(APIView):
         }, status=status.HTTP_400_BAD_REQUEST)
 
 
+class NotificationUnreadCountView(APIView):
+    def get(self, request):
+        count = Notification.objects.filter(user=request.user, is_read=False).count()
+        return Response({'count': count})
+
+
 class NotificationListView(APIView):
     def get(self, request):
         notifications = Notification.objects.filter(user=request.user)

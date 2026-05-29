@@ -8,10 +8,6 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RunSQL(
-            sql='ALTER TABLE users_user ALTER COLUMN phone_number DROP NOT NULL;',
-            reverse_sql='ALTER TABLE users_user ALTER COLUMN phone_number SET NOT NULL;',
-        ),
         migrations.AlterField(
             model_name='user',
             name='phone_number',
