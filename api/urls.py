@@ -1,7 +1,7 @@
 from django.urls import path
 from .views import (
     DeviceListView, DeviceDetailView, ConnectDeviceView,
-    DashboardView, HealthCheckView, SystemStatusView, WeatherView, WeatherLocationView,
+    DashboardView, HealthCheckView, WeatherView, WeatherLocationView,
     NotificationListView, NotificationDetailView, NotificationMarkAllReadView,
     NotificationUnreadCountView,
     WifiStatusView, WifiScanView, WifiConfigureView,
@@ -11,7 +11,6 @@ from .views import (
 
 urlpatterns = [
     path('core/health/',                   HealthCheckView.as_view(),              name='health-check'),
-    path('system/status/',                 SystemStatusView.as_view(),             name='system-status'),
     path('dashboard/',                     DashboardView.as_view(),                name='dashboard'),
     path('weather/',                       WeatherView.as_view(),                  name='weather'),
     path('weather/location/',              WeatherLocationView.as_view(),          name='weather-location'),
