@@ -202,9 +202,9 @@ DEFAULT_WEATHER_LOCATION = {
 # Cloudinary — avatar storage
 import cloudinary
 cloudinary.config(
-    cloud_name = config('CLOUDINARY_CLOUD_NAME'),
-    api_key    = config('CLOUDINARY_API_KEY'),
-    api_secret = config('CLOUDINARY_API_SECRET'),
+    cloud_name = config('CLOUDINARY_CLOUD_NAME', default=''),
+    api_key    = config('CLOUDINARY_API_KEY',    default=''),
+    api_secret = config('CLOUDINARY_API_SECRET', default=''),
     secure     = True,
 )
 
