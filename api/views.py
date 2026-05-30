@@ -1,6 +1,6 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework import status
 from django.shortcuts import get_object_or_404
 from .models import Device, Notification, FarmSettings, SensorReading, DailyAgriLog, LocationCache
@@ -814,7 +814,7 @@ class IntelligenceView(APIView):
 
 class LocationSearchView(APIView):
     """Geocode a place name: Redis cache → DB cache → Nominatim. Admin-only."""
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
         import urllib.request, json as _json
@@ -902,7 +902,7 @@ class LocationSearchView(APIView):
 
 class WeatherLocationView(APIView):
     """Handle location-based weather queries and location search"""
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
     
     def get(self, request):
         """Get weather location or search for locations"""
