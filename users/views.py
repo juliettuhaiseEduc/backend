@@ -94,6 +94,7 @@ class MeView(APIView):
             'can_manage_weather':   user.can_manage_weather,
             'can_manage_system':    user.can_manage_system,
             'profile_updated_at':   user.profile_updated_at,
+            'avatar_url':            user.avatar_url,
         })
 
     def patch(self, request):
@@ -159,6 +160,32 @@ class MeView(APIView):
             return Response({'detail': 'Current password is incorrect.'}, status=status.HTTP_400_BAD_REQUEST)
         user.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class AvatarUploadView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        import cloudinary.uploader
+        file = request.FILES.get('avatar')
+        if not file:
+            return Response({'detail': 'No file provided.'}, status=status.HTTP_400_BAD_REQUEST)
+        if file.size > 2 * 1024 * 1024:
+            return Response({'detail': 'Image must be under 2 MB.'}, status=status.HTTP_400_BAD_REQUEST)
+        if not file.content_type.startswith('image/'):
+            return Response({'detail': 'File must be an image.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        result = cloudinary.uploader.upload(
+            file,
+            folder='educfarm/avatars',
+            public_id=f'user_{request.user.id}',
+            overwrite=True,
+            transformation=[{'width': 256, 'height': 256, 'crop': 'fill', 'gravity': 'face'}],
+        )
+        url = result['secure_url']
+        request.user.avatar_url = url
+        request.user.save(update_fields=['avatar_url'])
+        return Response({'avatar_url': url})
 
 
 class HeartbeatView(APIView):

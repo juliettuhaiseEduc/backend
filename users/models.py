@@ -36,6 +36,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     can_manage_devices  = models.BooleanField(default=False)
     can_manage_weather  = models.BooleanField(default=False)
     can_manage_system   = models.BooleanField(default=False)
+    avatar_url          = models.URLField(max_length=500, blank=True, default='')
     created_at   = models.DateTimeField(auto_now_add=True)
     last_seen           = models.DateTimeField(null=True, blank=True)
     profile_updated_at  = models.DateTimeField(null=True, blank=True)

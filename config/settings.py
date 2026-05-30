@@ -199,6 +199,15 @@ DEFAULT_WEATHER_LOCATION = {
     'name': 'New York City'
 }
 
+# Cloudinary — avatar storage
+import cloudinary
+cloudinary.config(
+    cloud_name = config('CLOUDINARY_CLOUD_NAME'),
+    api_key    = config('CLOUDINARY_API_KEY'),
+    api_secret = config('CLOUDINARY_API_SECRET'),
+    secure     = True,
+)
+
 # Security Settings for Production
 SECURE_SSL_REDIRECT = False
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')

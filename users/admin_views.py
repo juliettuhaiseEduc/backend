@@ -35,6 +35,7 @@ class AdminUserListView(APIView):
                 'created_at':   u.created_at,
                 'last_seen':    u.last_seen,
                 'device_count': u.device_count,
+                'avatar_url':   u.avatar_url,
                 'profile_updated_at': u.profile_updated_at,
                 'soil_type':    fs.soil_type    if fs else '',
                 'plant_type':   fs.plant_type   if fs else '',
@@ -66,6 +67,7 @@ class AdminUserDetailView(APIView):
             'created_at':   user.created_at,
             'last_seen':    user.last_seen,
             'profile_updated_at': user.profile_updated_at,
+            'avatar_url':   user.avatar_url,
             'farm_settings': {
                 'soil_type':            fs.soil_type            if fs else '',
                 'plant_type':           fs.plant_type           if fs else '',
