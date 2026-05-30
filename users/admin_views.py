@@ -19,12 +19,15 @@ class AdminUserListView(APIView):
         users = User.objects.annotate(
             device_count=Count('devices')
         ).prefetch_related(
-            Prefetch('farmsettings_set', queryset=FarmSettings.objects.all())
+            Prefetch('farm_settings', queryset=FarmSettings.objects.all())
         ).order_by('-id')
         
         data = []
         for u in users:
-            fs = u.farmsettings_set.first() if u.farmsettings_set.exists() else None
+            try:
+                fs = u.farm_settings
+            except FarmSettings.DoesNotExist:
+                fs = None
             data.append({
                 'id':           u.id,
                 'full_name':    u.full_name,
