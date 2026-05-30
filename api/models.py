@@ -43,6 +43,9 @@ class FarmSettings(models.Model):
     moisture_critical_low = models.FloatField(default=20.0)
     irrigation_duration   = models.PositiveIntegerField(default=30, help_text='Minutes per irrigation cycle')
     notes                 = models.TextField(blank=True)
+    weather_lat           = models.FloatField(null=True, blank=True)
+    weather_lon           = models.FloatField(null=True, blank=True)
+    weather_location_name = models.CharField(max_length=200, blank=True, default='')
     updated_at            = models.DateTimeField(auto_now=True)
 
     def __str__(self):

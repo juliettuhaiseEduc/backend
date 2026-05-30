@@ -362,6 +362,30 @@ class AdminDeviceFixView(APIView):
             if fields:
                 fs.save(update_fields=fields)
                 log.append(f'Farm settings updated for {device.user.full_name}: {", ".join(fields)}.')
+
+        elif action == 'set_weather_location':
+            lat  = request.data.get('lat')
+            lon  = request.data.get('lon')
+            name = request.data.get('name', '').strip()
+            if lat is None or lon is None:
+                return Response({'detail': 'lat and lon are required.'}, status=status.HTTP_400_BAD_REQUEST)
+            try:
+                lat = float(lat)
+                lon = float(lon)
+            except (TypeError, ValueError):
+                return Response({'detail': 'lat and lon must be numbers.'}, status=status.HTTP_400_BAD_REQUEST)
+            if not (-90 <= lat <= 90) or not (-180 <= lon <= 180):
+                return Response({'detail': 'Coordinates out of range.'}, status=status.HTTP_400_BAD_REQUEST)
+            fs, _ = FarmSettings.objects.get_or_create(user=device.user)
+            fs.weather_lat           = lat
+            fs.weather_lon           = lon
+            fs.weather_location_name = name
+            fs.save(update_fields=['weather_lat', 'weather_lon', 'weather_location_name'])
+            log.append(f'Weather location set to {name or f"{lat},{lon}"} for {device.user.full_name}.')
+            return Response({
+                'success': True, 'log': log,
+                'weather_lat': lat, 'weather_lon': lon, 'weather_location_name': name,
+            })
         else:
             return Response({'detail': f'Unknown action: {action}'}, status=status.HTTP_400_BAD_REQUEST)
 

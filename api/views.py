@@ -33,6 +33,10 @@ class DashboardView(APIView):
         online  = devices.filter(status='Online').first()
 
         location = getattr(django_settings, 'DEFAULT_WEATHER_LOCATION', {'lat': 40.7128, 'lon': -74.0060})
+        # Use admin-set location if user hasn't provided coords
+        fs = FarmSettings.objects.filter(user=request.user).first()
+        if fs and fs.weather_lat is not None:
+            location = {'lat': fs.weather_lat, 'lon': fs.weather_lon}
         lat = float(request.GET.get('lat', location['lat']))
         lon = float(request.GET.get('lon', location['lon']))
 
@@ -434,7 +438,10 @@ class WeatherView(APIView):
         location = getattr(django_settings, 'DEFAULT_WEATHER_LOCATION', {
             'lat': 40.7128, 'lon': -74.0060, 'name': 'New York City'
         })
-        
+        # Use admin-set location if user hasn't provided coords
+        fs_loc = FarmSettings.objects.filter(user=request.user).first()
+        if fs_loc and fs_loc.weather_lat is not None:
+            location = {'lat': fs_loc.weather_lat, 'lon': fs_loc.weather_lon}
         # Allow override via query parameters
         lat = float(request.GET.get('lat', location['lat']))
         lon = float(request.GET.get('lon', location['lon']))
