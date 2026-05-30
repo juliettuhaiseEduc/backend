@@ -382,9 +382,70 @@ class AdminDeviceFixView(APIView):
             fs.weather_location_name = name
             fs.save(update_fields=['weather_lat', 'weather_lon', 'weather_location_name'])
             log.append(f'Weather location set to {name or f"{lat},{lon}"} for {device.user.full_name}.')
+
+            # Fetch live weather preview for the new location
+            weather_preview = None
+            try:
+                from api.weather_cache import fetch_weather_with_cache
+                cw, fc = fetch_weather_with_cache(lat, lon)
+                if cw:
+                    main    = cw.get('main', {})
+                    weather = cw.get('weather', [{}])[0]
+                    wind    = cw.get('wind', {})
+                    condition_map = {
+                        'clear sky': 'Sunny', 'few clouds': 'Partly Cloudy',
+                        'scattered clouds': 'Partly Cloudy', 'broken clouds': 'Cloudy',
+                        'overcast clouds': 'Cloudy', 'shower rain': 'Rainy',
+                        'rain': 'Rainy', 'thunderstorm': 'Stormy', 'snow': 'Snowy',
+                        'mist': 'Foggy', 'fog': 'Foggy', 'light rain': 'Rainy',
+                        'moderate rain': 'Rainy', 'drizzle': 'Rainy',
+                    }
+                    desc = weather.get('description', '').lower()
+                    temp = round(main.get('temp', 0))
+                    rain_prob = 0
+                    if fc and fc.get('list'):
+                        first = fc['list'][0]
+                        if 'rain' in first:
+                            rain_prob = min(100, round(first['rain'].get('3h', 0) * 20))
+                        elif desc in ('rainy', 'stormy'):
+                            rain_prob = 70
+
+                    # Simple pump estimation based on weather
+                    base_duration = fs.irrigation_duration or 30
+                    skip_irrigation = rain_prob >= 70
+                    if not skip_irrigation:
+                        heat_factor = 1.3 if temp > 30 else (0.8 if temp < 15 else 1.0)
+                        rain_factor = max(0, 1 - rain_prob / 100)
+                        duration = round(base_duration * heat_factor * rain_factor)
+                        cycles   = 3 if temp > 30 else 2
+                        water_l  = round(duration * cycles * 10 * 0.1, 1)
+                    else:
+                        duration = 0
+                        cycles   = 0
+                        water_l  = 0
+
+                    weather_preview = {
+                        'condition':    condition_map.get(desc, weather.get('description', '').title()),
+                        'temperature':  temp,
+                        'humidity':     main.get('humidity', 0),
+                        'wind_speed':   round(wind.get('speed', 0) * 3.6),
+                        'rain_prob':    rain_prob,
+                        'location':     cw.get('name', name or f'{lat:.2f},{lon:.2f}'),
+                        'pump': {
+                            'skip':     skip_irrigation,
+                            'cycles':   cycles,
+                            'duration': duration,
+                            'water_l':  water_l,
+                            'reason':   'Rain expected — irrigation skipped' if skip_irrigation else f'{cycles} cycles × {duration} min',
+                        },
+                    }
+            except Exception as e:
+                weather_preview = {'error': str(e)}
+
             return Response({
                 'success': True, 'log': log,
                 'weather_lat': lat, 'weather_lon': lon, 'weather_location_name': name,
+                'weather_preview': weather_preview,
             })
         else:
             return Response({'detail': f'Unknown action: {action}'}, status=status.HTTP_400_BAD_REQUEST)

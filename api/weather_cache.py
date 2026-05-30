@@ -8,14 +8,33 @@ import urllib.request
 from typing import Optional, Tuple, Dict, Any
 from django.conf import settings
 
-# Try to import Redis, fall back to in-memory dict if not available
 try:
     import redis
     REDIS_AVAILABLE = True
 except ImportError:
     REDIS_AVAILABLE = False
-    # In-memory fallback cache
     _MEMORY_CACHE = {}
+
+
+def get_redis_client():
+    """Return a connected Redis client or None if unavailable."""
+    if not REDIS_AVAILABLE:
+        return None
+    redis_url = getattr(settings, 'REDIS_URL', None)
+    if not redis_url:
+        return None
+    try:
+        client = redis.from_url(
+            redis_url,
+            decode_responses=True,
+            socket_connect_timeout=2,
+            socket_timeout=2,
+        )
+        client.ping()
+        return client
+    except Exception as e:
+        print(f'Redis connection failed: {e}')
+        return None
 
 
 class WeatherCache:
@@ -25,22 +44,7 @@ class WeatherCache:
     COORD_PRECISION = 2  # Round coordinates to 2 decimal places (~1km precision)
     
     def __init__(self):
-        self.redis_client = None
-        if REDIS_AVAILABLE:
-            try:
-                redis_url = getattr(settings, 'REDIS_URL', None)
-                if redis_url:
-                    self.redis_client = redis.from_url(
-                        redis_url,
-                        decode_responses=True,
-                        socket_connect_timeout=2,
-                        socket_timeout=2
-                    )
-                    # Test connection
-                    self.redis_client.ping()
-            except Exception as e:
-                print(f"Redis connection failed, using in-memory cache: {e}")
-                self.redis_client = None
+        self.redis_client = get_redis_client()
     
     def _make_cache_key(self, lat: float, lon: float, data_type: str) -> str:
         """Generate cache key from rounded coordinates"""

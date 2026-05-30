@@ -811,28 +811,47 @@ class IntelligenceView(APIView):
 
 
 class LocationSearchView(APIView):
-    """Geocode a place name: DB cache first, then Nominatim. Admin-only."""
-    permission_classes = [AllowAny]  # guarded by IsAdminUser on the frontend route; open here for simplicity
+    """Geocode a place name: Redis cache → DB cache → Nominatim. Admin-only."""
+    permission_classes = [AllowAny]
 
     def get(self, request):
         import urllib.request, json as _json
+        from .weather_cache import get_redis_client
 
         raw = request.GET.get('q', '').strip()
         if not raw:
             return Response([], status=status.HTTP_200_OK)
 
         query = raw.lower()
+        cache_key = f'location:{query}'
+        LOCATION_TTL = 60 * 60 * 24 * 30  # 30 days
 
-        # 1. Check PostgreSQL cache
-        cached = LocationCache.objects.filter(search_term=query).first()
-        if cached:
-            return Response([{
-                'display_name': cached.display_name,
-                'lat': cached.latitude,
-                'lon': cached.longitude,
-            }])
+        # 1. Check Redis
+        redis_client = get_redis_client()
+        if redis_client:
+            try:
+                cached = redis_client.get(cache_key)
+                if cached:
+                    return Response(_json.loads(cached))
+            except Exception:
+                pass
 
-        # 2. Query Nominatim
+        # 2. Check PostgreSQL
+        cached_db = LocationCache.objects.filter(search_term=query).first()
+        if cached_db:
+            result = [{
+                'display_name': cached_db.display_name,
+                'lat': cached_db.latitude,
+                'lon': cached_db.longitude,
+            }]
+            if redis_client:
+                try:
+                    redis_client.setex(cache_key, LOCATION_TTL, _json.dumps(result))
+                except Exception:
+                    pass
+            return Response(result)
+
+        # 3. Query Nominatim
         try:
             url = (
                 f'https://nominatim.openstreetmap.org/search'
@@ -847,7 +866,7 @@ class LocationSearchView(APIView):
         if not results:
             return Response([])
 
-        # 3. Save the top result to DB cache
+        # 4. Save top result to PostgreSQL
         top = results[0]
         try:
             LocationCache.objects.get_or_create(
@@ -859,16 +878,24 @@ class LocationSearchView(APIView):
                 },
             )
         except Exception:
-            pass  # cache write failure must never break the response
+            pass
 
-        return Response([
+        # 5. Save all results to Redis
+        formatted = [
             {
                 'display_name': r['display_name'],
                 'lat': float(r['lat']),
                 'lon': float(r['lon']),
             }
             for r in results
-        ])
+        ]
+        if redis_client:
+            try:
+                redis_client.setex(cache_key, LOCATION_TTL, _json.dumps(formatted))
+            except Exception:
+                pass
+
+        return Response(formatted)
 
 
 class WeatherLocationView(APIView):
