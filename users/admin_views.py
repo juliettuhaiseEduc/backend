@@ -138,7 +138,7 @@ class AdminDeviceListView(APIView):
                 'id':           d.id,
                 'device_id':    d.device_id,
                 'pairing_code': d.pairing_code,
-                'secret_key':   d.secret_key,
+                'secret_key':   d.secret_key[:6] + '…',
                 'device_name':  d.device_name,
                 'status':       d.status,
                 'is_paired':    d.is_paired,
@@ -334,7 +334,7 @@ class AdminDeviceStatsView(APIView):
             'device_id':      device.device_id,
             'device_name':    device.device_name,
             'pairing_code':   device.pairing_code,
-            'secret_key':     device.secret_key,
+            'secret_key':     device.secret_key[:6] + '…',
             'status':         device.status,
             'is_paired':      device.is_paired,
             'crop_type':      device.crop_type,
@@ -699,7 +699,6 @@ class AdminSettingsView(APIView):
             return Response({'saved': True})
 
         elif action == 'create_admin':
-            import random
             email    = request.data.get('email', '').strip()
             phone    = request.data.get('phone_number', '').strip()
             name     = request.data.get('full_name', '').strip()
@@ -715,8 +714,7 @@ class AdminSettingsView(APIView):
             if phone and User.objects.filter(phone_number=phone).exists():
                 return Response({'detail': 'Phone number already in use.'}, status=status.HTTP_400_BAD_REQUEST)
 
-            import random
-            otp = f'{random.randint(0, 999999):06d}'
+            otp = f'{secrets.randbelow(1_000_000):06d}'
 
             user = User.objects.create_user(
                 password=otp,          # OTP is the temporary login password
