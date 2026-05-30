@@ -3,7 +3,6 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
-from django_ratelimit.decorators import ratelimit
 from .serializers import SignupSerializer, LoginSerializer
 from .models import User
 
@@ -33,8 +32,13 @@ def _token_response(user):
 class CheckIdentifierView(APIView):
     permission_classes = [AllowAny]
 
-    @ratelimit(key='ip', rate='10/m', method='GET')
     def get(self, request):
+        try:
+            from django_ratelimit.core import is_ratelimited
+            if is_ratelimited(request, fn=None, key='ip', rate='10/m', method='GET', increment=True):
+                return Response({'available': False}, status=status.HTTP_429_TOO_MANY_REQUESTS)
+        except Exception:
+            pass
         value = request.query_params.get('value', '').strip()
         if not value:
             return Response({'available': False})
@@ -61,8 +65,13 @@ class SignupView(APIView):
 class LoginView(APIView):
     permission_classes = [AllowAny]
 
-    @ratelimit(key='ip', rate='5/15m', method='POST')
     def post(self, request):
+        try:
+            from django_ratelimit.core import is_ratelimited
+            if is_ratelimited(request, fn=None, key='ip', rate='5/15m', method='POST', increment=True):
+                return Response({'detail': 'Too many login attempts. Try again later.'}, status=status.HTTP_429_TOO_MANY_REQUESTS)
+        except Exception:
+            pass
         serializer = LoginSerializer(data=request.data)
         if serializer.is_valid():
             from django.utils import timezone
