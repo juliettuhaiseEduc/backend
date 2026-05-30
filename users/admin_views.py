@@ -41,6 +41,68 @@ class AdminUserListView(APIView):
 class AdminUserDetailView(APIView):
     permission_classes = [IsAdminUser]
 
+    def get(self, request, pk):
+        user = get_object_or_404(User, pk=pk)
+        fs = FarmSettings.objects.filter(user=user).first()
+        devices = Device.objects.filter(user=user).order_by('-created_at')
+        notifications = user.notifications.order_by('-created_at')[:20]
+        weather_logs = user.weather_logs.order_by('-accessed_at')[:5]
+
+        return Response({
+            'id':           user.id,
+            'full_name':    user.full_name,
+            'email':        user.email,
+            'phone_number': user.phone_number,
+            'is_staff':     user.is_staff,
+            'is_active':    user.is_active,
+            'created_at':   user.created_at,
+            'last_seen':    user.last_seen,
+            'farm_settings': {
+                'soil_type':            fs.soil_type            if fs else '',
+                'plant_type':           fs.plant_type           if fs else '',
+                'moisture_min':         fs.moisture_min         if fs else None,
+                'moisture_max':         fs.moisture_max         if fs else None,
+                'irrigation_duration':  fs.irrigation_duration  if fs else None,
+                'notes':                fs.notes                if fs else '',
+                'weather_location':     fs.weather_location_name if fs else '',
+                'admin_weather_location': fs.admin_weather_location_name if fs else '',
+            } if fs else None,
+            'devices': [
+                {
+                    'id':          d.id,
+                    'device_id':   d.device_id,
+                    'device_name': d.device_name,
+                    'status':      d.status,
+                    'is_paired':   d.is_paired,
+                    'crop_type':   d.crop_type,
+                    'soil_type':   d.soil_type,
+                    'last_seen':   d.last_seen,
+                    'paired_at':   d.paired_at,
+                    'total_readings': SensorReading.objects.filter(device=d).count(),
+                }
+                for d in devices
+            ],
+            'notifications': [
+                {
+                    'type':       n.type,
+                    'title':      n.title,
+                    'message':    n.message,
+                    'device_name': n.device_name,
+                    'is_read':    n.is_read,
+                    'created_at': n.created_at,
+                }
+                for n in notifications
+            ],
+            'recent_weather': [
+                {
+                    'location':    l.location,
+                    'success':     l.success,
+                    'accessed_at': l.accessed_at,
+                }
+                for l in weather_logs
+            ],
+        })
+
     def delete(self, request, pk):
         user = get_object_or_404(User, pk=pk)
         if user == request.user:

@@ -92,6 +92,64 @@ class MeView(APIView):
             'can_manage_system':    user.can_manage_system,
         })
 
+    def patch(self, request):
+        user = request.user
+        data = request.data
+        fields = []
+
+        if 'full_name' in data:
+            name = data['full_name'].strip()
+            if not name:
+                return Response({'detail': 'Name cannot be empty.'}, status=status.HTTP_400_BAD_REQUEST)
+            user.full_name = name
+            fields.append('full_name')
+
+        if 'farm_name' in data:
+            user.farm_name = data['farm_name'].strip()
+            fields.append('farm_name')
+
+        if 'email' in data:
+            email = data['email'].strip()
+            if email and User.objects.filter(email=email).exclude(pk=user.pk).exists():
+                return Response({'detail': 'Email already in use.'}, status=status.HTTP_400_BAD_REQUEST)
+            user.email = email or None
+            fields.append('email')
+
+        if 'phone_number' in data:
+            phone = data['phone_number'].strip()
+            if phone and User.objects.filter(phone_number=phone).exclude(pk=user.pk).exists():
+                return Response({'detail': 'Phone number already in use.'}, status=status.HTTP_400_BAD_REQUEST)
+            user.phone_number = phone or None
+            fields.append('phone_number')
+
+        if 'new_password' in data:
+            current = data.get('current_password', '')
+            if not user.check_password(current):
+                return Response({'detail': 'Current password is incorrect.'}, status=status.HTTP_400_BAD_REQUEST)
+            new_pass = data['new_password']
+            if len(new_pass) < 8:
+                return Response({'detail': 'Password must be at least 8 characters.'}, status=status.HTTP_400_BAD_REQUEST)
+            user.set_password(new_pass)
+            fields.append('password')
+
+        if not fields:
+            return Response({'detail': 'No changes provided.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        user.save(update_fields=fields)
+
+        # Return fresh tokens if password changed so the session stays alive
+        if 'password' in fields:
+            return Response(_token_response(user))
+        return Response({'detail': 'Profile updated.'})
+
+    def delete(self, request):
+        user = request.user
+        current = request.data.get('current_password', '')
+        if not user.check_password(current):
+            return Response({'detail': 'Current password is incorrect.'}, status=status.HTTP_400_BAD_REQUEST)
+        user.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
 
 class HeartbeatView(APIView):
     permission_classes = [IsAuthenticated]
