@@ -3,6 +3,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
+from django_ratelimit.decorators import ratelimit
 from .serializers import SignupSerializer, LoginSerializer
 from .models import User
 
@@ -32,6 +33,7 @@ def _token_response(user):
 class CheckIdentifierView(APIView):
     permission_classes = [AllowAny]
 
+    @ratelimit(key='ip', rate='10/m', method='GET')
     def get(self, request):
         value = request.query_params.get('value', '').strip()
         if not value:
@@ -59,6 +61,7 @@ class SignupView(APIView):
 class LoginView(APIView):
     permission_classes = [AllowAny]
 
+    @ratelimit(key='ip', rate='5/15m', method='POST')
     def post(self, request):
         serializer = LoginSerializer(data=request.data)
         if serializer.is_valid():

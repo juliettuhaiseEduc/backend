@@ -173,6 +173,25 @@ OPENWEATHER_API_KEY = config('OPENWEATHER_API_KEY', default='')
 # For local dev: redis://localhost:6379/0
 REDIS_URL = config('REDIS_URL', default=None)
 
+# Cache Configuration for Rate Limiting
+if REDIS_URL:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django_redis.cache.RedisCache',
+            'LOCATION': REDIS_URL,
+            'OPTIONS': {
+                'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+            }
+        }
+    }
+else:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+            'LOCATION': 'educfarm-locmem',
+        }
+    }
+
 # Default location (latitude, longitude) - New York City
 DEFAULT_WEATHER_LOCATION = {
     'lat': 40.7128,
