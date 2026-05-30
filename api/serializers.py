@@ -127,5 +127,10 @@ class FarmSettingsSerializer(serializers.ModelSerializer):
             'soil_type', 'plant_type',
             'moisture_min', 'moisture_max', 'moisture_critical_low',
             'irrigation_duration', 'notes', 'updated_at',
+            'weather_lat', 'weather_lon', 'weather_location_name',
+            'admin_weather_lat', 'admin_weather_lon', 'admin_weather_location_name',
         ]
-        read_only_fields = ['updated_at']
+        read_only_fields = [
+            'updated_at',
+            'admin_weather_lat', 'admin_weather_lon', 'admin_weather_location_name',
+        ]

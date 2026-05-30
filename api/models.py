@@ -46,6 +46,10 @@ class FarmSettings(models.Model):
     weather_lat           = models.FloatField(null=True, blank=True)
     weather_lon           = models.FloatField(null=True, blank=True)
     weather_location_name = models.CharField(max_length=200, blank=True, default='')
+    # Admin-set location — takes priority over user location, never overwritten by user
+    admin_weather_lat           = models.FloatField(null=True, blank=True)
+    admin_weather_lon           = models.FloatField(null=True, blank=True)
+    admin_weather_location_name = models.CharField(max_length=200, blank=True, default='')
     updated_at            = models.DateTimeField(auto_now=True)
 
     def __str__(self):

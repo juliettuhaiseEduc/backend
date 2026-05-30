@@ -377,10 +377,10 @@ class AdminDeviceFixView(APIView):
             if not (-90 <= lat <= 90) or not (-180 <= lon <= 180):
                 return Response({'detail': 'Coordinates out of range.'}, status=status.HTTP_400_BAD_REQUEST)
             fs, _ = FarmSettings.objects.get_or_create(user=device.user)
-            fs.weather_lat           = lat
-            fs.weather_lon           = lon
-            fs.weather_location_name = name
-            fs.save(update_fields=['weather_lat', 'weather_lon', 'weather_location_name'])
+            fs.admin_weather_lat           = lat
+            fs.admin_weather_lon           = lon
+            fs.admin_weather_location_name = name
+            fs.save(update_fields=['admin_weather_lat', 'admin_weather_lon', 'admin_weather_location_name'])
             log.append(f'Weather location set to {name or f"{lat},{lon}"} for {device.user.full_name}.')
 
             # Fetch live weather preview for the new location
