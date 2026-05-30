@@ -11,3 +11,4 @@ python-decouple>=3.8
 gunicorn>=21.0.0
 whitenoise>=6.5.0
 redis>=5.0.0
+apscheduler>=3.10.0
