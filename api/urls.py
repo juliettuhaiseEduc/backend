@@ -1,7 +1,7 @@
 from django.urls import path
 from .views import (
     DeviceListView, DeviceDetailView, ConnectDeviceView,
-    DashboardView, HealthCheckView, WeatherView, WeatherLocationView,
+    DashboardView, HealthCheckView, WeatherView, WeatherLocationView, LocationSearchView,
     NotificationListView, NotificationDetailView, NotificationMarkAllReadView,
     NotificationUnreadCountView,
     WifiStatusView, WifiScanView, WifiConfigureView,
@@ -30,5 +30,6 @@ urlpatterns = [
     path('wifi/scan/',                     WifiScanView.as_view(),                 name='wifi-scan'),
     path('wifi/configure/',                WifiConfigureView.as_view(),            name='wifi-configure'),
     path('intelligence/',                 IntelligenceView.as_view(),             name='intelligence'),
+    path('location-search/',              LocationSearchView.as_view(),           name='location-search'),
     path('farm-settings/',                 FarmSettingsView.as_view(),             name='farm-settings'),
 ]

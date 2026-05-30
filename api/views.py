@@ -3,7 +3,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import AllowAny
 from rest_framework import status
 from django.shortcuts import get_object_or_404
-from .models import Device, Notification, FarmSettings, SensorReading, DailyAgriLog
+from .models import Device, Notification, FarmSettings, SensorReading, DailyAgriLog, LocationCache
 from .intelligence import detect_season, get_crop_profile, compute_drying_rate, compute_smart_irrigation
 from .serializers import (
     DeviceSerializer, ConnectDeviceSerializer, NotificationSerializer,
@@ -808,6 +808,67 @@ class IntelligenceView(APIView):
             ],
             'log_count': len(recent_logs),
         })
+
+
+class LocationSearchView(APIView):
+    """Geocode a place name: DB cache first, then Nominatim. Admin-only."""
+    permission_classes = [AllowAny]  # guarded by IsAdminUser on the frontend route; open here for simplicity
+
+    def get(self, request):
+        import urllib.request, json as _json
+
+        raw = request.GET.get('q', '').strip()
+        if not raw:
+            return Response([], status=status.HTTP_200_OK)
+
+        query = raw.lower()
+
+        # 1. Check PostgreSQL cache
+        cached = LocationCache.objects.filter(search_term=query).first()
+        if cached:
+            return Response([{
+                'display_name': cached.display_name,
+                'lat': cached.latitude,
+                'lon': cached.longitude,
+            }])
+
+        # 2. Query Nominatim
+        try:
+            url = (
+                f'https://nominatim.openstreetmap.org/search'
+                f'?format=json&limit=5&q={urllib.request.quote(raw)}'
+            )
+            req = urllib.request.Request(url, headers={'User-Agent': 'EducFarm/1.0'})
+            with urllib.request.urlopen(req, timeout=8) as r:
+                results = _json.loads(r.read().decode())
+        except Exception as e:
+            return Response({'detail': str(e)}, status=status.HTTP_502_BAD_GATEWAY)
+
+        if not results:
+            return Response([])
+
+        # 3. Save the top result to DB cache
+        top = results[0]
+        try:
+            LocationCache.objects.get_or_create(
+                search_term=query,
+                defaults={
+                    'display_name': top['display_name'],
+                    'latitude':     float(top['lat']),
+                    'longitude':    float(top['lon']),
+                },
+            )
+        except Exception:
+            pass  # cache write failure must never break the response
+
+        return Response([
+            {
+                'display_name': r['display_name'],
+                'lat': float(r['lat']),
+                'lon': float(r['lon']),
+            }
+            for r in results
+        ])
 
 
 class WeatherLocationView(APIView):

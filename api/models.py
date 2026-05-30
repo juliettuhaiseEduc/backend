@@ -131,6 +131,20 @@ class DailyAgriLog(models.Model):
         return f'{self.user} — {self.date} ({self.season})'
 
 
+class LocationCache(models.Model):
+    search_term  = models.CharField(max_length=255, unique=True, db_index=True)
+    display_name = models.TextField()
+    latitude     = models.FloatField()
+    longitude    = models.FloatField()
+    created_at   = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Location Cache'
+
+    def __str__(self):
+        return f'{self.search_term} → {self.display_name}'
+
+
 class SystemSettings(models.Model):
     """Singleton — only one row ever exists (pk=1)"""
     system_online        = models.BooleanField(default=True)
