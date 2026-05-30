@@ -28,6 +28,7 @@ class AdminUserListView(APIView):
                 'created_at':   u.created_at,
                 'last_seen':    u.last_seen,
                 'device_count': u.devices.count(),
+                'profile_updated_at': u.profile_updated_at,
                 'soil_type':    fs.soil_type    if fs else '',
                 'plant_type':   fs.plant_type   if fs else '',
                 'moisture_min': fs.moisture_min if fs else None,
@@ -57,6 +58,7 @@ class AdminUserDetailView(APIView):
             'is_active':    user.is_active,
             'created_at':   user.created_at,
             'last_seen':    user.last_seen,
+            'profile_updated_at': user.profile_updated_at,
             'farm_settings': {
                 'soil_type':            fs.soil_type            if fs else '',
                 'plant_type':           fs.plant_type           if fs else '',

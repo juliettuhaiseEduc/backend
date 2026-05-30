@@ -90,6 +90,7 @@ class MeView(APIView):
             'can_manage_devices':   user.can_manage_devices,
             'can_manage_weather':   user.can_manage_weather,
             'can_manage_system':    user.can_manage_system,
+            'profile_updated_at':   user.profile_updated_at,
         })
 
     def patch(self, request):
@@ -134,6 +135,12 @@ class MeView(APIView):
 
         if not fields:
             return Response({'detail': 'No changes provided.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        profile_fields = {'full_name', 'farm_name', 'email', 'phone_number'}
+        if fields and (set(fields) & profile_fields):
+            from django.utils import timezone
+            user.profile_updated_at = timezone.now()
+            fields.append('profile_updated_at')
 
         user.save(update_fields=fields)
 
