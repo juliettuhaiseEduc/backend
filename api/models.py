@@ -76,6 +76,25 @@ class SensorReading(models.Model):
         return f'{self.device.device_name} @ {self.recorded_at}'
 
 
+class PumpCommand(models.Model):
+    """Separate model for pump control events — keeps sensor history clean."""
+    STATUS_CHOICES = [('On', 'On'), ('Off', 'Off')]
+    
+    device      = models.ForeignKey(Device, on_delete=models.CASCADE, related_name='pump_commands')
+    command     = models.CharField(max_length=10, choices=STATUS_CHOICES)
+    issued_by   = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='pump_commands')
+    issued_at   = models.DateTimeField(auto_now_add=True, db_index=True)
+    
+    class Meta:
+        ordering = ['-issued_at']
+        indexes = [
+            models.Index(fields=['device', '-issued_at'], name='pump_cmd_device_time_idx'),
+        ]
+    
+    def __str__(self):
+        return f'{self.device.device_name} pump {self.command} @ {self.issued_at}'
+
+
 class Notification(models.Model):
     TYPE_CHOICES = [
         ('pump',    'Pump'),

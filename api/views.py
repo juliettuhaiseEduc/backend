@@ -3,7 +3,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework import status
 from django.shortcuts import get_object_or_404
-from .models import Device, Notification, FarmSettings, SensorReading, DailyAgriLog, LocationCache
+from .models import Device, Notification, FarmSettings, SensorReading, DailyAgriLog, LocationCache, PumpCommand
 from .intelligence import detect_season, get_crop_profile, compute_drying_rate, compute_smart_irrigation
 from .serializers import (
     DeviceSerializer, ConnectDeviceSerializer, NotificationSerializer,
@@ -184,26 +184,50 @@ class PairDeviceView(APIView):
 
 
 class TestDeviceView(APIView):
-    """Test hardware device connection before full pairing"""
+    """Test hardware device connection — queries real sensor data if available"""
     def post(self, request):
         serializer = TestDeviceSerializer(data=request.data, context={'request': request})
         if serializer.is_valid():
             device = serializer.validated_data['device']
             
-            # Simulate device status and sensor readings
-            test_results = {
-                'success': True,
-                'device_id': device.device_id,
-                'device_name': device.device_name,
-                'checks': {
-                    'device_found': True,
-                    'online_status': 'Online',
-                    'temperature_reading': 28.5,  # Mock data
-                    'soil_moisture': 65.2,  # Mock data
-                    'pump_status': 'Off',
-                },
-                'message': 'Device test successful! Ready for pairing.'
-            }
+            # Try to fetch real sensor data from device
+            latest_reading = SensorReading.objects.filter(device=device).first()
+            
+            if latest_reading:
+                # Real device data exists — use it
+                test_results = {
+                    'success': True,
+                    'device_id': device.device_id,
+                    'device_name': device.device_name,
+                    'checks': {
+                        'device_found': True,
+                        'online_status': 'Online',
+                        'temperature_reading': latest_reading.temperature,
+                        'soil_moisture': latest_reading.soil_moisture,
+                        'pump_status': latest_reading.pump_status,
+                        'reading_source': 'real',
+                        'last_update': latest_reading.recorded_at.isoformat(),
+                    },
+                    'message': 'Device test successful! Latest sensor data received.'
+                }
+            else:
+                # No sensor data yet — use simulated values with clear labeling
+                test_results = {
+                    'success': True,
+                    'device_id': device.device_id,
+                    'device_name': device.device_name,
+                    'checks': {
+                        'device_found': True,
+                        'online_status': 'Online',
+                        'temperature_reading': None,
+                        'soil_moisture': None,
+                        'pump_status': 'Off',
+                        'reading_source': 'simulated',
+                        'note': 'Device test passed but no sensor data received yet. Wait for device to send readings.',
+                    },
+                    'message': 'Device found and online, but waiting for first sensor reading. Keep the device powered on.'
+                }
+            
             return Response(test_results, status=status.HTTP_200_OK)
         
         return Response({
@@ -313,24 +337,22 @@ class LiveDataView(APIView):
 
 
 class PumpControlView(APIView):
-    """Manually toggle pump for a device"""
+    """Manually toggle pump for a device — records command separately from sensor data"""
 
     def post(self, request):
         device_id  = request.data.get('device_id')
         pump_on    = request.data.get('pump_on', False)
         device     = get_object_or_404(Device, device_id=device_id, user=request.user)
-        # Record a synthetic reading reflecting the manual pump change
-        last = SensorReading.objects.filter(device=device).first()
-        SensorReading.objects.create(
+        
+        # Record pump command separately (not in sensor readings)
+        command_status = 'On' if pump_on else 'Off'
+        PumpCommand.objects.create(
             device=device,
-            soil_moisture=last.soil_moisture if last else None,
-            temperature=last.temperature   if last else None,
-            humidity=last.humidity         if last else None,
-            water_tank=last.water_tank     if last else None,
-            pump_status='Running' if pump_on else 'Off',
-            irrig_cycles=(last.irrig_cycles + (1 if pump_on else 0)) if last else (1 if pump_on else 0),
+            command=command_status,
+            issued_by=request.user,
         )
-        return Response({'status': 'ok', 'pump_status': 'Running' if pump_on else 'Off'})
+        
+        return Response({'status': 'ok', 'pump_status': command_status})
 
 
 class WifiStatusView(APIView):
