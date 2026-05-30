@@ -577,6 +577,7 @@ class AdminWeatherView(APIView):
             {
                 'user_name':  l.user.full_name,
                 'user_email': l.user.email or l.user.phone_number,
+                'avatar_url': l.user.avatar_url,
                 'location':   l.location,
                 'lat':        l.lat,
                 'lon':        l.lon,
@@ -597,6 +598,7 @@ class AdminWeatherView(APIView):
                 'id':             u.id,
                 'full_name':      u.full_name,
                 'email':          u.email or u.phone_number,
+                'avatar_url':     u.avatar_url,
                 'weather_access': getattr(u, 'weather_access', True),
                 'usage_count':    u.usage_count or 0,
                 'last_used':      u.last_used,
