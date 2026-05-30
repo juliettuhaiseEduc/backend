@@ -64,10 +64,13 @@ class SensorReading(models.Model):
     water_tank     = models.FloatField(null=True, blank=True)
     pump_status    = models.CharField(max_length=20, default='Off')
     irrig_cycles   = models.PositiveIntegerField(default=0)
-    recorded_at    = models.DateTimeField(auto_now_add=True)
+    recorded_at    = models.DateTimeField(auto_now_add=True, db_index=True)
 
     class Meta:
         ordering = ['-recorded_at']
+        indexes = [
+            models.Index(fields=['device', '-recorded_at'], name='device_recorded_at_idx'),
+        ]
 
     def __str__(self):
         return f'{self.device.device_name} @ {self.recorded_at}'

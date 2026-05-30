@@ -6,18 +6,25 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAdminUser, AllowAny
 from rest_framework import status
 from django.shortcuts import get_object_or_404
+from django.db.models import Count, Max, Prefetch
 from .models import User
-from api.models import Device, SensorReading, FarmSettings
+from api.models import Device, SensorReading, FarmSettings, WeatherAccessLog
 
 
 class AdminUserListView(APIView):
     permission_classes = [IsAdminUser]
 
     def get(self, request):
-        users = User.objects.all().order_by('-id')
+        # Use annotate to count devices per user (avoids N+1 queries)
+        users = User.objects.annotate(
+            device_count=Count('devices')
+        ).prefetch_related(
+            Prefetch('farmsettings_set', queryset=FarmSettings.objects.all())
+        ).order_by('-id')
+        
         data = []
         for u in users:
-            fs = FarmSettings.objects.filter(user=u).first()
+            fs = u.farmsettings_set.first() if u.farmsettings_set.exists() else None
             data.append({
                 'id':           u.id,
                 'full_name':    u.full_name,
@@ -27,7 +34,7 @@ class AdminUserListView(APIView):
                 'is_active':    u.is_active,
                 'created_at':   u.created_at,
                 'last_seen':    u.last_seen,
-                'device_count': u.devices.count(),
+                'device_count': u.device_count,
                 'profile_updated_at': u.profile_updated_at,
                 'soil_type':    fs.soil_type    if fs else '',
                 'plant_type':   fs.plant_type   if fs else '',
@@ -574,16 +581,20 @@ class AdminWeatherView(APIView):
             for l in logs[:20]
         ]
 
-        # Per-user access list
-        users = User.objects.filter(is_staff=False).order_by('full_name')
+        # Per-user access list with annotated counts (avoids N+1 queries)
+        users = User.objects.filter(is_staff=False).annotate(
+            usage_count=Count('weather_logs'),
+            last_used=Max('weather_logs__accessed_at')
+        ).order_by('full_name')
+        
         user_access = [
             {
                 'id':             u.id,
                 'full_name':      u.full_name,
                 'email':          u.email or u.phone_number,
                 'weather_access': getattr(u, 'weather_access', True),
-                'usage_count':    WeatherAccessLog.objects.filter(user=u).count(),
-                'last_used':      WeatherAccessLog.objects.filter(user=u).values_list('accessed_at', flat=True).first(),
+                'usage_count':    u.usage_count or 0,
+                'last_used':      u.last_used,
             }
             for u in users
         ]
