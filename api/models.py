@@ -171,6 +171,31 @@ class LocationCache(models.Model):
         return f'{self.search_term} → {self.display_name}'
 
 
+class PlantProfile(models.Model):
+    """
+    Admin-managed plant profiles. These override built-in CROP_PROFILES when matched.
+    is_active controls whether users can see/select this plant.
+    """
+    key                  = models.CharField(max_length=100, unique=True)
+    label                = models.CharField(max_length=150)
+    water_demand_l_day   = models.FloatField(default=5.5)
+    stress_temp_high     = models.FloatField(default=32.0)
+    stress_moisture_low  = models.FloatField(default=30.0)
+    root_depth_factor    = models.FloatField(default=1.0)
+    # Season adjust factors stored as JSON: {"long_rains": 0.4, ...}
+    season_adjust        = models.JSONField(default=dict)
+    is_active            = models.BooleanField(default=True)
+    is_builtin           = models.BooleanField(default=False, help_text='True for seeded built-in profiles')
+    created_at           = models.DateTimeField(auto_now_add=True)
+    updated_at           = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['label']
+
+    def __str__(self):
+        return f'{self.label} ({self.key})'
+
+
 class SystemSettings(models.Model):
     """Singleton — only one row ever exists (pk=1)"""
     system_online        = models.BooleanField(default=True)

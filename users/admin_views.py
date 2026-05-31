@@ -8,7 +8,7 @@ from rest_framework import status
 from django.shortcuts import get_object_or_404
 from django.db.models import Count, Max, Prefetch
 from .models import User
-from api.models import Device, SensorReading, FarmSettings, WeatherAccessLog
+from api.models import Device, SensorReading, FarmSettings, WeatherAccessLog, PlantProfile
 
 
 class AdminUserListView(APIView):
@@ -770,6 +770,71 @@ class AdminSettingsView(APIView):
             return Response({'id': user.id, 'demoted': True})
 
         return Response({'detail': f'Unknown action: {action}'}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class AdminPlantProfilesView(APIView):
+    """CRUD for admin-managed plant profiles visible to users."""
+    permission_classes = [IsAdminUser]
+
+    DEFAULT_SEASON_ADJUST = {
+        'long_rains': 0.4, 'cool_dry': 0.85,
+        'short_rains': 0.5, 'hot_dry': 1.3, 'transition': 1.0,
+    }
+
+    def _serialize(self, p):
+        return {
+            'id': p.id, 'key': p.key, 'label': p.label,
+            'water_demand_l_day': p.water_demand_l_day,
+            'stress_temp_high': p.stress_temp_high,
+            'stress_moisture_low': p.stress_moisture_low,
+            'root_depth_factor': p.root_depth_factor,
+            'season_adjust': {**self.DEFAULT_SEASON_ADJUST, **(p.season_adjust or {})},
+            'is_active': p.is_active,
+            'is_builtin': p.is_builtin,
+            'updated_at': p.updated_at,
+        }
+
+    def get(self, request):
+        profiles = PlantProfile.objects.all()
+        return Response([self._serialize(p) for p in profiles])
+
+    def post(self, request):
+        key   = request.data.get('key', '').strip().lower().replace(' ', '_')
+        label = request.data.get('label', '').strip()
+        if not key or not label:
+            return Response({'detail': 'key and label are required.'}, status=status.HTTP_400_BAD_REQUEST)
+        if PlantProfile.objects.filter(key=key).exists():
+            return Response({'detail': f'A profile with key "{key}" already exists.'}, status=status.HTTP_400_BAD_REQUEST)
+        p = PlantProfile.objects.create(
+            key=key, label=label,
+            water_demand_l_day=float(request.data.get('water_demand_l_day', 5.5)),
+            stress_temp_high=float(request.data.get('stress_temp_high', 32.0)),
+            stress_moisture_low=float(request.data.get('stress_moisture_low', 30.0)),
+            root_depth_factor=float(request.data.get('root_depth_factor', 1.0)),
+            season_adjust=request.data.get('season_adjust', {}),
+            is_active=bool(request.data.get('is_active', True)),
+        )
+        return Response(self._serialize(p), status=status.HTTP_201_CREATED)
+
+    def patch(self, request, pk=None):
+        p = get_object_or_404(PlantProfile, pk=pk)
+        fields = ['label', 'water_demand_l_day', 'stress_temp_high',
+                  'stress_moisture_low', 'root_depth_factor', 'season_adjust', 'is_active']
+        for f in fields:
+            if f in request.data:
+                val = request.data[f]
+                if f in ('water_demand_l_day', 'stress_temp_high', 'stress_moisture_low', 'root_depth_factor'):
+                    val = float(val)
+                setattr(p, f, val)
+        p.save()
+        return Response(self._serialize(p))
+
+    def delete(self, request, pk=None):
+        p = get_object_or_404(PlantProfile, pk=pk)
+        if p.is_builtin:
+            return Response({'detail': 'Built-in profiles cannot be deleted — disable them instead.'}, status=status.HTTP_400_BAD_REQUEST)
+        p.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class SystemStatusView(APIView):

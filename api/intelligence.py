@@ -1314,6 +1314,35 @@ CROP_PROFILES = {
 
 def get_crop_profile(plant_type: str) -> dict:
     key = (plant_type or 'general').strip().lower()
+
+    # Check DB overrides first (admin-managed profiles)
+    try:
+        from api.models import PlantProfile
+        DEFAULT_SEASON_ADJUST = {
+            'long_rains': 0.4, 'cool_dry': 0.85,
+            'short_rains': 0.5, 'hot_dry': 1.3, 'transition': 1.0,
+        }
+        # Exact match first, then substring
+        db_profile = (
+            PlantProfile.objects.filter(key=key, is_active=True).first()
+            or PlantProfile.objects.filter(key__icontains=key, is_active=True).first()
+        )
+        if db_profile:
+            sa = db_profile.season_adjust or {}
+            merged = {**DEFAULT_SEASON_ADJUST, **sa}
+            return {
+                'key': db_profile.key,
+                'label': db_profile.label,
+                'water_demand_l_day': db_profile.water_demand_l_day,
+                'stress_temp_high': db_profile.stress_temp_high,
+                'stress_moisture_low': db_profile.stress_moisture_low,
+                'root_depth_factor': db_profile.root_depth_factor,
+                'season_adjust': merged,
+            }
+    except Exception:
+        pass
+
+    # Fall back to built-in profiles
     for k in CROP_PROFILES:
         if k in key:
             return {'key': k, **CROP_PROFILES[k]}
