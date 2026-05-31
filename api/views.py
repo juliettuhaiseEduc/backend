@@ -640,13 +640,13 @@ class WeatherView(APIView):
                         break
                 hours.append({
                     'time': hour_str,
-                    'temp': round(item['main']['temp']),
-                    'feels_like': round(item['main']['feels_like']),
-                    'humidity': item['main']['humidity'],
+                    'temp': round(item['main']['temp'], 1),
+                    'feels_like': round(item['main']['feels_like'], 1),
+                    'humidity': round(item['main']['humidity'], 1),
                     'condition': condition,
                     'description': weather.get('description', '').title(),
-                    'rain_probability': rain_prob,
-                    'wind_speed': round(item['wind']['speed'] * 3.6),
+                    'rain_probability': round(rain_prob, 1),
+                    'wind_speed': round(item['wind']['speed'] * 3.6, 1),
                     'pump_active': pump_active,
                 })
             return hours
