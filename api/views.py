@@ -923,7 +923,7 @@ class LocationSearchView(APIView):
 
 
 class PlantProfilesView(APIView):
-    """Returns all active plant profiles for users — DB overrides merged with built-ins."""
+    """Returns plant profiles — active only for users, all (including disabled) for admins."""
 
     def get(self, request):
         from .intelligence import CROP_PROFILES
@@ -933,15 +933,17 @@ class PlantProfilesView(APIView):
             'short_rains': 0.5, 'hot_dry': 1.3, 'transition': 1.0,
         }
 
-        # All DB profiles indexed by key (both active and inactive)
+        is_admin = request.user.is_staff
+
+        # All DB profiles indexed by key
         all_db = {p.key: p for p in PlantProfile.objects.all()}
-        disabled_keys = {k for k, p in all_db.items() if not p.is_active}
-        active_db = {k: p for k, p in all_db.items() if p.is_active}
 
         result = []
 
-        # 1. Active DB profiles (admin overrides or custom additions)
-        for p in active_db.values():
+        # 1. DB profiles — admins see all, users only see active
+        for p in all_db.values():
+            if not is_admin and not p.is_active:
+                continue
             sa = {**DEFAULT_SA, **(p.season_adjust or {})}
             result.append({
                 'id': p.id,
@@ -957,7 +959,7 @@ class PlantProfilesView(APIView):
                 'source': 'db',
             })
 
-        # 2. Built-ins not yet in DB and not disabled
+        # 2. Built-ins not yet in DB
         db_keys = set(all_db.keys())
         for key, cp in CROP_PROFILES.items():
             if key in db_keys:
