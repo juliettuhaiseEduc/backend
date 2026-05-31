@@ -177,6 +177,7 @@ class AvatarUploadView(APIView):
 
     def post(self, request):
         import cloudinary.uploader
+        from django.utils import timezone
         file = request.FILES.get('avatar')
         if not file:
             return Response({'detail': 'No file provided.'}, status=status.HTTP_400_BAD_REQUEST)
@@ -193,6 +194,8 @@ class AvatarUploadView(APIView):
             transformation=[{'width': 256, 'height': 256, 'crop': 'fill', 'gravity': 'face'}],
         )
         url = result['secure_url']
+        # Add cache-busting parameter with timestamp
+        url = f"{url}?v={int(timezone.now().timestamp())}"
         request.user.avatar_url = url
         request.user.save(update_fields=['avatar_url'])
         return Response({'avatar_url': url})
