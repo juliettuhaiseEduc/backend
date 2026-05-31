@@ -933,19 +933,18 @@ class PlantProfilesView(APIView):
             'short_rains': 0.5, 'hot_dry': 1.3, 'transition': 1.0,
         }
 
-        # Build a map of DB profiles (active only)
-        db_profiles = {p.key: p for p in PlantProfile.objects.filter(is_active=True)}
-        # Keys explicitly disabled by admin
-        disabled_keys = set(
-            PlantProfile.objects.filter(is_active=False).values_list('key', flat=True)
-        )
+        # All DB profiles indexed by key (both active and inactive)
+        all_db = {p.key: p for p in PlantProfile.objects.all()}
+        disabled_keys = {k for k, p in all_db.items() if not p.is_active}
+        active_db = {k: p for k, p in all_db.items() if p.is_active}
 
         result = []
 
-        # 1. All DB profiles (admin-added or overrides)
-        for p in db_profiles.values():
+        # 1. Active DB profiles (admin overrides or custom additions)
+        for p in active_db.values():
             sa = {**DEFAULT_SA, **(p.season_adjust or {})}
             result.append({
+                'id': p.id,
                 'key': p.key,
                 'label': p.label,
                 'water_demand_l_day': p.water_demand_l_day,
@@ -953,16 +952,18 @@ class PlantProfilesView(APIView):
                 'stress_moisture_low': p.stress_moisture_low,
                 'root_depth_factor': p.root_depth_factor,
                 'season_adjust': sa,
+                'is_active': p.is_active,
                 'is_builtin': p.is_builtin,
                 'source': 'db',
             })
 
         # 2. Built-ins not yet in DB and not disabled
-        db_keys = set(db_profiles.keys())
+        db_keys = set(all_db.keys())
         for key, cp in CROP_PROFILES.items():
-            if key in db_keys or key in disabled_keys:
+            if key in db_keys:
                 continue
             result.append({
+                'id': None,
                 'key': key,
                 'label': cp['label'],
                 'water_demand_l_day': cp['water_demand_l_day'],
@@ -970,6 +971,7 @@ class PlantProfilesView(APIView):
                 'stress_moisture_low': cp['stress_moisture_low'],
                 'root_depth_factor': cp['root_depth_factor'],
                 'season_adjust': cp['season_adjust'],
+                'is_active': True,
                 'is_builtin': True,
                 'source': 'builtin',
             })

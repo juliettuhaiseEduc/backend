@@ -803,18 +803,32 @@ class AdminPlantProfilesView(APIView):
         label = request.data.get('label', '').strip()
         if not key or not label:
             return Response({'detail': 'key and label are required.'}, status=status.HTTP_400_BAD_REQUEST)
-        if PlantProfile.objects.filter(key=key).exists():
-            return Response({'detail': f'A profile with key "{key}" already exists.'}, status=status.HTTP_400_BAD_REQUEST)
-        p = PlantProfile.objects.create(
-            key=key, label=label,
-            water_demand_l_day=float(request.data.get('water_demand_l_day', 5.5)),
-            stress_temp_high=float(request.data.get('stress_temp_high', 32.0)),
-            stress_moisture_low=float(request.data.get('stress_moisture_low', 30.0)),
-            root_depth_factor=float(request.data.get('root_depth_factor', 1.0)),
-            season_adjust=request.data.get('season_adjust', {}),
-            is_active=bool(request.data.get('is_active', True)),
+        # Use get_or_create so toggling a built-in twice doesn't 400
+        p, created = PlantProfile.objects.get_or_create(
+            key=key,
+            defaults={
+                'label': label,
+                'water_demand_l_day': float(request.data.get('water_demand_l_day', 5.5)),
+                'stress_temp_high':   float(request.data.get('stress_temp_high', 32.0)),
+                'stress_moisture_low':float(request.data.get('stress_moisture_low', 30.0)),
+                'root_depth_factor':  float(request.data.get('root_depth_factor', 1.0)),
+                'season_adjust':      request.data.get('season_adjust', {}),
+                'is_active':          bool(request.data.get('is_active', True)),
+                'is_builtin':         bool(request.data.get('is_builtin', False)),
+            }
         )
-        return Response(self._serialize(p), status=status.HTTP_201_CREATED)
+        if not created:
+            # Already exists — update all provided fields
+            fields = ['label', 'water_demand_l_day', 'stress_temp_high',
+                      'stress_moisture_low', 'root_depth_factor', 'season_adjust', 'is_active']
+            for f in fields:
+                if f in request.data:
+                    val = request.data[f]
+                    if f in ('water_demand_l_day', 'stress_temp_high', 'stress_moisture_low', 'root_depth_factor'):
+                        val = float(val)
+                    setattr(p, f, val)
+            p.save()
+        return Response(self._serialize(p), status=status.HTTP_200_OK if not created else status.HTTP_201_CREATED)
 
     def patch(self, request, pk=None):
         p = get_object_or_404(PlantProfile, pk=pk)
