@@ -801,6 +801,39 @@ class AdminPlantProfilesView(APIView):
     def post(self, request):
         key   = request.data.get('key', '').strip().lower().replace(' ', '_')
         label = request.data.get('label', '').strip()
+
+        # ── Bulk seed: accept a list of plants ──────────────────────────────
+        if isinstance(request.data, list):
+            created, updated = 0, 0
+            DEFAULT_SA = {
+                'long_rains': 0.4, 'cool_dry': 0.85,
+                'short_rains': 0.5, 'hot_dry': 1.3, 'transition': 1.0,
+            }
+            for item in request.data:
+                k = item.get('key', '').strip().lower().replace(' ', '_')
+                l = item.get('label', '').strip()
+                if not k or not l:
+                    continue
+                p, was_created = PlantProfile.objects.get_or_create(
+                    key=k,
+                    defaults={
+                        'label': l,
+                        'water_demand_l_day': float(item.get('water_demand_l_day', 5.5)),
+                        'stress_temp_high':   float(item.get('stress_temp_high', 32.0)),
+                        'stress_moisture_low':float(item.get('stress_moisture_low', 30.0)),
+                        'root_depth_factor':  float(item.get('root_depth_factor', 1.0)),
+                        'season_adjust':      item.get('season_adjust', DEFAULT_SA),
+                        'is_active':          bool(item.get('is_active', True)),
+                        'is_builtin':         bool(item.get('is_builtin', True)),
+                    }
+                )
+                if was_created:
+                    created += 1
+                else:
+                    updated += 1
+            return Response({'created': created, 'updated': updated}, status=status.HTTP_200_OK)
+
+        # ── Single plant ─────────────────────────────────────────────────────
         if not key or not label:
             return Response({'detail': 'key and label are required.'}, status=status.HTTP_400_BAD_REQUEST)
         # Use get_or_create so toggling a built-in twice doesn't 400
