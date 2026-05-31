@@ -3,7 +3,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework import status
 from django.shortcuts import get_object_or_404
-from .models import Device, Notification, FarmSettings, SensorReading, DailyAgriLog, LocationCache, PumpCommand
+from .models import Device, Notification, FarmSettings, SensorReading, DailyAgriLog, LocationCache, PumpCommand, PlantProfile
 from .intelligence import detect_season, get_crop_profile, compute_drying_rate, compute_smart_irrigation
 from .serializers import (
     DeviceSerializer, ConnectDeviceSerializer, NotificationSerializer,
@@ -920,6 +920,62 @@ class LocationSearchView(APIView):
                 pass
 
         return Response(formatted)
+
+
+class PlantProfilesView(APIView):
+    """Returns all active plant profiles for users — DB overrides merged with built-ins."""
+
+    def get(self, request):
+        from .intelligence import CROP_PROFILES
+
+        DEFAULT_SA = {
+            'long_rains': 0.4, 'cool_dry': 0.85,
+            'short_rains': 0.5, 'hot_dry': 1.3, 'transition': 1.0,
+        }
+
+        # Build a map of DB profiles (active only)
+        db_profiles = {p.key: p for p in PlantProfile.objects.filter(is_active=True)}
+        # Keys explicitly disabled by admin
+        disabled_keys = set(
+            PlantProfile.objects.filter(is_active=False).values_list('key', flat=True)
+        )
+
+        result = []
+
+        # 1. All DB profiles (admin-added or overrides)
+        for p in db_profiles.values():
+            sa = {**DEFAULT_SA, **(p.season_adjust or {})}
+            result.append({
+                'key': p.key,
+                'label': p.label,
+                'water_demand_l_day': p.water_demand_l_day,
+                'stress_temp_high': p.stress_temp_high,
+                'stress_moisture_low': p.stress_moisture_low,
+                'root_depth_factor': p.root_depth_factor,
+                'season_adjust': sa,
+                'is_builtin': p.is_builtin,
+                'source': 'db',
+            })
+
+        # 2. Built-ins not yet in DB and not disabled
+        db_keys = set(db_profiles.keys())
+        for key, cp in CROP_PROFILES.items():
+            if key in db_keys or key in disabled_keys:
+                continue
+            result.append({
+                'key': key,
+                'label': cp['label'],
+                'water_demand_l_day': cp['water_demand_l_day'],
+                'stress_temp_high': cp['stress_temp_high'],
+                'stress_moisture_low': cp['stress_moisture_low'],
+                'root_depth_factor': cp['root_depth_factor'],
+                'season_adjust': cp['season_adjust'],
+                'is_builtin': True,
+                'source': 'builtin',
+            })
+
+        result.sort(key=lambda x: x['label'])
+        return Response(result)
 
 
 class WeatherLocationView(APIView):

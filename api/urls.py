@@ -7,6 +7,7 @@ from .views import (
     WifiStatusView, WifiScanView, WifiConfigureView,
     FarmSettingsView, PairDeviceView, TestDeviceView,
     SensorIngestView, LiveDataView, PumpControlView, IntelligenceView,
+    PlantProfilesView,
 )
 
 urlpatterns = [
@@ -32,4 +33,5 @@ urlpatterns = [
     path('intelligence/',                 IntelligenceView.as_view(),             name='intelligence'),
     path('location-search/',              LocationSearchView.as_view(),           name='location-search'),
     path('farm-settings/',                 FarmSettingsView.as_view(),             name='farm-settings'),
+    path('plant-profiles/',                PlantProfilesView.as_view(),            name='plant-profiles'),
 ]
