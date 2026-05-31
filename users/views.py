@@ -89,7 +89,7 @@ class MeView(APIView):
 
     def get(self, request):
         user = request.user
-        return Response({
+        response = Response({
             'id':                   user.id,
             'full_name':            user.full_name,
             'email':                user.email,
@@ -106,6 +106,11 @@ class MeView(APIView):
             'profile_updated_at':   user.profile_updated_at,
             'avatar_url':            user.avatar_url,
         })
+        # Disable caching to ensure fresh avatar on every fetch
+        response['Cache-Control'] = 'no-cache, no-store, must-revalidate, max-age=0'
+        response['Pragma'] = 'no-cache'
+        response['Expires'] = '0'
+        return response
 
     def patch(self, request):
         user = request.user
@@ -160,8 +165,15 @@ class MeView(APIView):
 
         # Return fresh tokens if password changed so the session stays alive
         if 'password' in fields:
-            return Response(_token_response(user))
-        return Response({'detail': 'Profile updated.'})
+            response = Response(_token_response(user))
+        else:
+            response = Response({'detail': 'Profile updated.'})
+        
+        # Disable caching to ensure fresh avatar on every update
+        response['Cache-Control'] = 'no-cache, no-store, must-revalidate, max-age=0'
+        response['Pragma'] = 'no-cache'
+        response['Expires'] = '0'
+        return response
 
     def delete(self, request):
         user = request.user
@@ -198,7 +210,12 @@ class AvatarUploadView(APIView):
         url = f"{url}?v={int(timezone.now().timestamp())}"
         request.user.avatar_url = url
         request.user.save(update_fields=['avatar_url'])
-        return Response({'avatar_url': url})
+        response = Response({'avatar_url': url})
+        # Disable caching to force refresh on other devices
+        response['Cache-Control'] = 'no-cache, no-store, must-revalidate, max-age=0'
+        response['Pragma'] = 'no-cache'
+        response['Expires'] = '0'
+        return response
 
 
 class HeartbeatView(APIView):
