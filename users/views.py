@@ -25,6 +25,7 @@ def _token_response(user):
             'can_manage_devices': getattr(user, 'can_manage_devices', False),
             'can_manage_weather': getattr(user, 'can_manage_weather', False),
             'can_manage_system':  getattr(user, 'can_manage_system', False),
+            'avatar_url':         user.avatar_url or '',
         },
     }
 
