@@ -199,6 +199,11 @@ DEFAULT_WEATHER_LOCATION = {
     'name': 'New York City'
 }
 
+# Push Notifications (VAPID)
+VAPID_PUBLIC_KEY  = config('VAPID_PUBLIC_KEY',  default='')
+VAPID_PRIVATE_KEY = config('VAPID_PRIVATE_KEY', default='')
+VAPID_SUBJECT     = config('VAPID_SUBJECT',     default='mailto:admin@educfarm.com')
+
 # Cloudinary — avatar storage
 import cloudinary
 cloudinary.config(

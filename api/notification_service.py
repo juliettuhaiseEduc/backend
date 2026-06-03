@@ -15,10 +15,32 @@ def _already_sent(user, title, within_minutes=10):
 def notify(user, type, title, message, device_name='', dedupe_minutes=10):
     if _already_sent(user, title, dedupe_minutes):
         return None
-    return Notification.objects.create(
+    
+    notification = Notification.objects.create(
         user=user, type=type, title=title,
         message=message, device_name=device_name,
     )
+    
+    # Send push notification to subscribed devices
+    try:
+        from .push_utils import send_push_to_user
+        unread_count = Notification.objects.filter(user=user, is_read=False).count()
+        send_push_to_user(
+            user=user,
+            title=title,
+            body=message,
+            badge_count=unread_count,
+            data={
+                'notification_id': notification.id,
+                'type': type,
+                'url': '/EducFarm/notifications',
+            }
+        )
+    except Exception as e:
+        # Log but don't fail if push fails
+        print(f'Error sending push notification: {e}')
+    
+    return notification
 
 
 # ── Specific notification helpers ─────────────────────────

@@ -3,6 +3,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework import status
 from django.shortcuts import get_object_or_404
+from django.conf import settings
 from .models import Device, Notification, FarmSettings, SensorReading, DailyAgriLog, LocationCache, PumpCommand, PlantProfile
 from .intelligence import detect_season, get_crop_profile, compute_drying_rate, compute_smart_irrigation
 from .serializers import (
@@ -273,7 +274,8 @@ class NotificationDetailView(APIView):
 class NotificationMarkAllReadView(APIView):
     def post(self, request):
         Notification.objects.filter(user=request.user, is_read=False).update(is_read=True)
-        return Response({'status': 'ok'})
+        # Tell the frontend to clear the app badge
+        return Response({'status': 'ok', 'badge_count': 0})
 
 
 class FarmSettingsView(APIView):
@@ -459,336 +461,423 @@ class WeatherLocationSettingsView(APIView):
             )
 
 
+
+
 class WeatherView(APIView):
     def get(self, request):
         # Check if user has weather access
         if not getattr(request.user, 'weather_access', True):
-            return Response({'detail': 'Weather access has been disabled for your account.'}, status=status.HTTP_403_FORBIDDEN)
-        from datetime import datetime, timedelta
-        import urllib.request
-        import json
-        from django.conf import settings as django_settings
+            return Response(
+                {'detail': 'Weather access has been disabled for your account.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
         
-        # Get location from settings or request parameters
-        location = getattr(django_settings, 'DEFAULT_WEATHER_LOCATION', {
-            'lat': 40.7128, 'lon': -74.0060, 'name': 'New York City'
-        })
-        fs_loc = FarmSettings.objects.filter(user=request.user).first()
-        if fs_loc and fs_loc.admin_weather_lat is not None:
-            location = {'lat': fs_loc.admin_weather_lat, 'lon': fs_loc.admin_weather_lon}
-        elif fs_loc and fs_loc.weather_lat is not None:
-            location = {'lat': fs_loc.weather_lat, 'lon': fs_loc.weather_lon}
-        # Allow override via query parameters
-        lat = float(request.GET.get('lat', location['lat']))
-        lon = float(request.GET.get('lon', location['lon']))
-        
-        # Weather API integration using urllib
-        api_key = getattr(django_settings, 'OPENWEATHER_API_KEY', '')
-        base_url = 'https://api.openweathermap.org/data/2.5'
-        
-        
-        def parse_current_weather(data):
-            """Parse current weather API response"""
-            if not data:
-                return {
+        try:
+            # Check if OpenWeather API is configured
+            api_key = getattr(settings, 'OPENWEATHER_API_KEY', '').strip()
+            if not api_key:
+                print('[WeatherView] WARNING: OPENWEATHER_API_KEY not configured. Returning fallback data.')
+                # Return fallback data if API key is not configured
+                from datetime import datetime
+                return Response({
+                    'current': {
+                        'condition': 'sunny', 'temperature': 24, 'humidity': 60,
+                        'rain_probability': 10, 'wind_speed': 14, 'pressure': 1013,
+                        'visibility': 10, 'feels_like': 26,
+                        'description': 'Weather service not configured',
+                        'location': 'Default Location',
+                        'updated_at': datetime.utcnow().isoformat() + 'Z',
+                        'irrigation': {
+                            'water_total_l': 10,
+                            'pump_duration_min': 30,
+                            'rain_saving_l': 0,
+                            'reason': 'API key not configured',
+                            'pump_times': [],
+                        },
+                    },
+                    'forecast': [
+                        {
+                            'day': 'Mon', 'date': datetime.now().strftime('%Y-%m-%d'),
+                            'condition': 'sunny', 'temp_high': 25, 'temp_low': 15,
+                            'rain_probability': 10, 'irrigation': {
+                                'water_total_l': 10, 'pump_duration_min': 30,
+                                'rain_saving_l': 0, 'reason': 'API key not configured',
+                                'pump_times': [],
+                            },
+                        }
+                    ],
+                    'hourly': [],
+                    'intelligence': {
+                        'season': {'key': 'spring', 'label': 'Spring'},
+                        'crop': {
+                            'key': 'general', 'label': 'General',
+                            'stress_temp': 35, 'stress_moisture': 20,
+                            'season_factor': 1.0,
+                        },
+                        'drying': {'drying_mm_day': 0},
+                        'log_count': 0,
+                    },
+                    'irrigation_settings': {
+                        'base_duration_min': 30,
+                        'soil_type': 'Loam',
+                        'plant_type': 'General',
+                        'pump_flow_rate': 10,
+                        'weekly_water_l': 70,
+                        'weekly_saving_l': 0,
+                    },
+                })
+            
+            # Get location from settings or request parameters
+            location = getattr(settings, 'DEFAULT_WEATHER_LOCATION', {
+                'lat': 40.7128, 'lon': -74.0060, 'name': 'New York City'
+            })
+            fs_loc = FarmSettings.objects.filter(user=request.user).first()
+            if fs_loc and fs_loc.admin_weather_lat is not None:
+                location = {'lat': fs_loc.admin_weather_lat, 'lon': fs_loc.admin_weather_lon}
+            elif fs_loc and fs_loc.weather_lat is not None:
+                location = {'lat': fs_loc.weather_lat, 'lon': fs_loc.weather_lon}
+            
+            # Allow override via query parameters
+            lat = float(request.GET.get('lat', location['lat']))
+            lon = float(request.GET.get('lon', location['lon']))
+
+            # Fetch weather data (served from cache when available)
+            from .weather_cache import fetch_weather_with_cache
+            current_data, forecast_data = fetch_weather_with_cache(lat, lon)
+            current_weather = self._parse_current_weather(current_data)
+            forecast_list = self._parse_forecast(forecast_data)
+            
+            # Get farm settings for irrigation calculations
+            settings_obj, _ = FarmSettings.objects.get_or_create(user=request.user)
+            base_duration = settings_obj.irrigation_duration
+            soil_type = settings_obj.soil_type or 'Loam'
+            plant_type = (settings_obj.plant_type or 'General').strip().lower()
+
+            # Soil and plant factors
+            SOIL = {
+                'Sandy': {'water_factor': 1.40}, 'Sandy Loam': {'water_factor': 1.20},
+                'Loam': {'water_factor': 1.00}, 'Silt': {'water_factor': 0.95},
+                'Clay Loam': {'water_factor': 0.85}, 'Clay': {'water_factor': 0.75},
+                'Peat': {'water_factor': 0.90}, 'Chalk': {'water_factor': 1.10},
+            }
+            soil = SOIL.get(soil_type, SOIL['Loam'])
+            PUMP_FLOW_RATE = 10
+
+            # Intelligence: season, crop profile, drying rate
+            from datetime import datetime, timedelta
+            today_eat = datetime.now()
+            season = detect_season(today_eat.month)
+            crop_profile = get_crop_profile(plant_type)
+
+            # Fetch last 30 daily logs for drying rate analysis
+            recent_logs = list(
+                DailyAgriLog.objects
+                .filter(user=request.user)
+                .order_by('date')
+                .values('avg_moisture', 'avg_temp', 'total_rain_mm')[:30]
+            )
+            drying = compute_drying_rate(recent_logs)
+
+            def irrigation_plan(condition, temp, rain_prob):
+                return compute_smart_irrigation(
+                    temp=temp,
+                    rain_prob=rain_prob,
+                    condition=condition,
+                    soil_water_factor=soil['water_factor'],
+                    base_duration=base_duration,
+                    crop_profile=crop_profile,
+                    season=season,
+                    drying=drying,
+                    recent_logs=recent_logs,
+                )
+
+            # Calculate irrigation plans
+            for day_data in forecast_list:
+                plan = irrigation_plan(
+                    day_data['condition'], 
+                    day_data['temp_high'], 
+                    day_data['rain_probability']
+                )
+                day_data['irrigation'] = plan
+
+            today_plan = irrigation_plan(
+                current_weather['condition'], 
+                current_weather['temperature'],
+                current_weather.get('rain_probability', 0)
+            )
+            current_weather['irrigation'] = today_plan
+
+            # Write / update today's DailyAgriLog
+            try:
+                log_date = today_eat.date()
+                log, _ = DailyAgriLog.objects.get_or_create(
+                    user=request.user, date=log_date,
+                    defaults={'season': season['key']}
+                )
+                log.avg_temp = current_weather['temperature']
+                log.rain_prob = current_weather.get('rain_probability', 0)
+                log.total_rain_mm = round(today_plan.get('rain_saving_l', 0) / 10, 2)
+                log.water_used_l = today_plan.get('water_total_l', 0)
+                log.season = season['key']
+                # avg_moisture from latest sensor reading if available
+                device = Device.objects.filter(user=request.user, status='Online').first()
+                if device:
+                    latest = SensorReading.objects.filter(device=device).first()
+                    if latest and latest.soil_moisture is not None:
+                        log.avg_moisture = latest.soil_moisture
+                log.save()
+            except Exception as e:
+                print(f'DailyAgriLog write error: {e}')
+
+            hourly = self._parse_hourly(forecast_data, today_plan)
+            weekly_water = round(sum(d['irrigation']['water_total_l'] for d in forecast_list), 1)
+            weekly_saving = round(sum(d['irrigation']['rain_saving_l'] for d in forecast_list), 1)
+
+            # Log this weather access
+            try:
+                from api.models import WeatherAccessLog
+                WeatherAccessLog.objects.create(
+                    user=request.user,
+                    lat=lat, lon=lon,
+                    location=current_weather.get('location', ''),
+                    success=True,
+                )
+            except Exception:
+                pass
+
+            return Response({
+                'current': current_weather,
+                'hourly': hourly,
+                'forecast': forecast_list,
+                'intelligence': {
+                    'season': season,
+                    'crop': {
+                        'key': crop_profile['key'],
+                        'label': crop_profile['label'],
+                        'stress_temp': crop_profile['stress_temp_high'],
+                        'stress_moisture': crop_profile['stress_moisture_low'],
+                        'season_factor': crop_profile['season_adjust'].get(season['key'], 1.0),
+                    },
+                    'drying': drying,
+                    'log_count': len(recent_logs),
+                },
+                'irrigation_settings': {
+                    'base_duration_min': base_duration,
+                    'soil_type': soil_type,
+                    'plant_type': settings_obj.plant_type or 'General',
+                    'pump_flow_rate': PUMP_FLOW_RATE,
+                    'weekly_water_l': weekly_water,
+                    'weekly_saving_l': weekly_saving,
+                },
+            })
+
+        except Exception as e:
+            print(f'[WeatherView] Error: {e}')
+            import traceback
+            traceback.print_exc()
+            from datetime import datetime
+            
+            return Response({
+                'detail': f'Weather service error: {str(e)}',
+                'current': {
                     'condition': 'sunny', 'temperature': 24, 'humidity': 60,
                     'rain_probability': 10, 'wind_speed': 14, 'pressure': 1013,
                     'visibility': 10, 'feels_like': 26,
-                    'description': 'Clear skies (offline data)',
+                    'description': 'Unable to fetch weather data',
                     'location': 'Unknown Location',
-                    'updated_at': datetime.utcnow().isoformat() + 'Z'
-                }
-                
-            main = data.get('main', {})
-            weather = data.get('weather', [{}])[0]
-            wind = data.get('wind', {})
-            
-            condition_map = {
-                'clear sky': 'sunny', 'few clouds': 'partly_cloudy',
-                'scattered clouds': 'partly_cloudy', 'broken clouds': 'cloudy',
-                'overcast clouds': 'cloudy', 'shower rain': 'rainy',
-                'rain': 'rainy', 'thunderstorm': 'stormy', 'snow': 'snowy',
-                'mist': 'foggy', 'fog': 'foggy'
-            }
-            
-            description = weather.get('description', '').lower()
-            condition = condition_map.get(description, 'sunny')
-            
+                    'updated_at': datetime.utcnow().isoformat() + 'Z',
+                    'irrigation': {
+                        'water_total_l': 10,
+                        'pump_duration_min': 30,
+                        'rain_saving_l': 0,
+                        'reason': 'Service error - using default values',
+                        'pump_times': [],
+                    },
+                },
+                'forecast': [],
+            }, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+    def _parse_current_weather(self, data):
+        """Parse current weather API response"""
+        from datetime import datetime
+        if not data:
             return {
-                'condition': condition,
-                'temperature': round(main.get('temp', 0)),
-                'humidity': main.get('humidity', 0),
-                'rain_probability': 0,
-                'wind_speed': round(wind.get('speed', 0) * 3.6),
-                'pressure': main.get('pressure', 0),
-                'visibility': round(data.get('visibility', 10000) / 1000),
-                'feels_like': round(main.get('feels_like', 0)),
-                'description': weather.get('description', '').title(),
-                'location': data.get('name', 'Unknown'),
+                'condition': 'sunny', 'temperature': 24, 'humidity': 60,
+                'rain_probability': 10, 'wind_speed': 14, 'pressure': 1013,
+                'visibility': 10, 'feels_like': 26,
+                'description': 'Clear skies (offline data)',
+                'location': 'Unknown Location',
                 'updated_at': datetime.utcnow().isoformat() + 'Z'
             }
+            
+        main = data.get('main', {})
+        weather = data.get('weather', [{}])[0]
+        wind = data.get('wind', {})
         
-        def parse_forecast(data):
-            """Parse forecast API response"""
-            days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-            
-            if not data or 'list' not in data:
-                # Fallback forecast
-                conditions = ['sunny', 'partly_cloudy', 'cloudy', 'rainy', 'sunny', 'windy', 'sunny']
-                temp_highs = [26, 24, 21, 19, 23, 25, 27]
-                temp_lows = [16, 15, 14, 13, 15, 16, 17]
-                rain_probs = [5, 20, 40, 75, 15, 10, 5]
-                
-                forecast = []
-                now = datetime.now()
-                for i in range(7):
-                    date = now + timedelta(days=i)
-                    forecast.append({
-                        'day': days[date.weekday()],
-                        'date': date.strftime('%Y-%m-%d'),
-                        'condition': conditions[i],
-                        'temp_high': temp_highs[i],
-                        'temp_low': temp_lows[i],
-                        'rain_probability': rain_probs[i]
-                    })
-                return forecast
-            
-            # Parse real forecast data
-            daily_data = {}
-            condition_map = {
-                'clear sky': 'sunny', 'few clouds': 'partly_cloudy',
-                'scattered clouds': 'partly_cloudy', 'broken clouds': 'cloudy',
-                'overcast clouds': 'cloudy', 'shower rain': 'rainy',
-                'rain': 'rainy', 'thunderstorm': 'stormy', 'snow': 'snowy',
-                'mist': 'foggy', 'fog': 'foggy'
-            }
-            
-            for item in data['list'][:35]:
-                dt = datetime.fromtimestamp(item['dt'])
-                date_key = dt.strftime('%Y-%m-%d')
-                
-                if date_key not in daily_data:
-                    daily_data[date_key] = {
-                        'day': days[dt.weekday()], 'date': date_key,
-                        'temps': [], 'conditions': [], 'rain_probs': []
-                    }
-                
-                daily_data[date_key]['temps'].append(item['main']['temp'])
-                
-                weather = item.get('weather', [{}])[0]
-                description = weather.get('description', '').lower()
-                condition = condition_map.get(description, 'sunny')
-                daily_data[date_key]['conditions'].append(condition)
-                
-                rain_prob = 0
-                if 'rain' in item:
-                    rain_prob = min(100, item['rain'].get('3h', 0) * 20)
-                elif condition in ['rainy', 'stormy']:
-                    rain_prob = 70
-                elif condition == 'cloudy':
-                    rain_prob = 30
-                elif condition == 'partly_cloudy':
-                    rain_prob = 15
-                
-                daily_data[date_key]['rain_probs'].append(rain_prob)
+        condition_map = {
+            'clear sky': 'sunny', 'few clouds': 'partly_cloudy',
+            'scattered clouds': 'partly_cloudy', 'broken clouds': 'cloudy',
+            'overcast clouds': 'cloudy', 'shower rain': 'rainy',
+            'rain': 'rainy', 'thunderstorm': 'stormy', 'snow': 'snowy',
+            'mist': 'foggy', 'fog': 'foggy'
+        }
+        
+        description = weather.get('description', '').lower()
+        condition = condition_map.get(description, 'sunny')
+        
+        return {
+            'condition': condition,
+            'temperature': round(main.get('temp', 0)),
+            'humidity': main.get('humidity', 0),
+            'rain_probability': 0,
+            'wind_speed': round(wind.get('speed', 0) * 3.6),
+            'pressure': main.get('pressure', 0),
+            'visibility': round(data.get('visibility', 10000) / 1000),
+            'feels_like': round(main.get('feels_like', 0)),
+            'description': weather.get('description', '').title(),
+            'location': data.get('name', 'Unknown'),
+            'updated_at': datetime.utcnow().isoformat() + 'Z'
+        }
+
+    def _parse_forecast(self, data):
+        """Parse forecast API response"""
+        from datetime import datetime, timedelta
+        days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+        
+        if not data or 'list' not in data:
+            # Fallback forecast
+            conditions = ['sunny', 'partly_cloudy', 'cloudy', 'rainy', 'sunny', 'partly_cloudy', 'sunny']
+            temp_highs = [26, 24, 21, 19, 23, 25, 27]
+            temp_lows = [16, 15, 14, 13, 15, 16, 17]
+            rain_probs = [5, 20, 40, 75, 15, 10, 5]
             
             forecast = []
-            for date_key in sorted(daily_data.keys())[:7]:
-                day_data = daily_data[date_key]
-                conditions = day_data['conditions']
-                condition = max(set(conditions), key=conditions.count) if conditions else 'sunny'
-                
+            now = datetime.now()
+            for i in range(7):
+                date = now + timedelta(days=i)
                 forecast.append({
-                    'day': day_data['day'], 'date': date_key, 'condition': condition,
-                    'temp_high': round(max(day_data['temps'])) if day_data['temps'] else 25,
-                    'temp_low': round(min(day_data['temps'])) if day_data['temps'] else 15,
-                    'rain_probability': round(sum(day_data['rain_probs']) / len(day_data['rain_probs'])) if day_data['rain_probs'] else 10
+                    'day': days[date.weekday()],
+                    'date': date.strftime('%Y-%m-%d'),
+                    'condition': conditions[i],
+                    'temp_high': temp_highs[i],
+                    'temp_low': temp_lows[i],
+                    'rain_probability': rain_probs[i]
                 })
-            
-            # Fill remaining days if needed
-            while len(forecast) < 7:
-                base_date = datetime.now() + timedelta(days=len(forecast))
-                forecast.append({
-                    'day': days[base_date.weekday()],
-                    'date': base_date.strftime('%Y-%m-%d'),
-                    'condition': 'sunny', 'temp_high': 25, 'temp_low': 15, 'rain_probability': 10
-                })
-            
-            return forecast[:7]
+            return forecast
         
-        def parse_hourly(data, today_plan):
-            """Extract next 8 hours from forecast data"""
-            if not data or 'list' not in data:
-                return []
-            condition_map = {
-                'clear sky': 'sunny', 'few clouds': 'partly_cloudy',
-                'scattered clouds': 'partly_cloudy', 'broken clouds': 'cloudy',
-                'overcast clouds': 'cloudy', 'shower rain': 'rainy',
-                'rain': 'rainy', 'thunderstorm': 'stormy', 'snow': 'snowy',
-                'mist': 'foggy', 'fog': 'foggy'
-            }
-            pump_times = set(today_plan.get('pump_times', []))
-            hours = []
-            for item in data['list'][:8]:
-                dt = datetime.fromtimestamp(item['dt'])
-                hour_str = dt.strftime('%H:%M')
-                weather = item.get('weather', [{}])[0]
-                description = weather.get('description', '').lower()
-                condition = condition_map.get(description, 'sunny')
-                rain_prob = 0
-                if 'rain' in item:
-                    rain_prob = min(100, item['rain'].get('3h', 0) * 20)
-                elif condition in ['rainy', 'stormy']:
-                    rain_prob = 70
-                elif condition == 'cloudy':
-                    rain_prob = 30
-                # Check if pump runs within 30 min of this hour
-                pump_active = False
-                for pt in pump_times:
-                    ph, pm = map(int, pt.split(':'))
-                    diff = abs((dt.hour * 60 + dt.minute) - (ph * 60 + pm))
-                    if diff <= 30:
-                        pump_active = True
-                        break
-                hours.append({
-                    'time': hour_str,
-                    'temp': round(item['main']['temp'], 1),
-                    'feels_like': round(item['main']['feels_like'], 1),
-                    'humidity': round(item['main']['humidity'], 1),
-                    'condition': condition,
-                    'description': weather.get('description', '').title(),
-                    'rain_probability': round(rain_prob, 1),
-                    'wind_speed': round(item['wind']['speed'] * 3.6, 1),
-                    'pump_active': pump_active,
-                })
-            return hours
-
-        # Fetch weather data (served from cache when available)
-        from .weather_cache import fetch_weather_with_cache
-        current_data, forecast_data = fetch_weather_with_cache(lat, lon)
-        current_weather = parse_current_weather(current_data)
-        forecast_list = parse_forecast(forecast_data)
-        
-        # Get farm settings for irrigation calculations
-        settings_obj, _ = FarmSettings.objects.get_or_create(user=request.user)
-        base_duration = settings_obj.irrigation_duration
-        soil_type = settings_obj.soil_type or 'Loam'
-        plant_type = (settings_obj.plant_type or 'General').strip().lower()
-
-        # Soil and plant factors
-        SOIL = {
-            'Sandy': {'water_factor': 1.40}, 'Sandy Loam': {'water_factor': 1.20},
-            'Loam': {'water_factor': 1.00}, 'Silt': {'water_factor': 0.95},
-            'Clay Loam': {'water_factor': 0.85}, 'Clay': {'water_factor': 0.75},
-            'Peat': {'water_factor': 0.90}, 'Chalk': {'water_factor': 1.10},
+        # Parse real forecast data
+        daily_data = {}
+        condition_map = {
+            'clear sky': 'sunny', 'few clouds': 'partly_cloudy',
+            'scattered clouds': 'partly_cloudy', 'broken clouds': 'cloudy',
+            'overcast clouds': 'cloudy', 'shower rain': 'rainy',
+            'rain': 'rainy', 'thunderstorm': 'stormy', 'snow': 'snowy',
+            'mist': 'foggy', 'fog': 'foggy'
         }
-        soil = SOIL.get(soil_type, SOIL['Loam'])
+        
+        for item in data['list'][:35]:
+            dt = datetime.fromtimestamp(item['dt'])
+            date_key = dt.strftime('%Y-%m-%d')
+            
+            if date_key not in daily_data:
+                daily_data[date_key] = {
+                    'day': days[dt.weekday()], 'date': date_key,
+                    'temps': [], 'conditions': [], 'rain_probs': []
+                }
+            
+            daily_data[date_key]['temps'].append(item['main']['temp'])
+            
+            weather = item.get('weather', [{}])[0]
+            description = weather.get('description', '').lower()
+            condition = condition_map.get(description, 'sunny')
+            daily_data[date_key]['conditions'].append(condition)
+            
+            rain_prob = 0
+            if 'rain' in item:
+                rain_prob = min(100, item['rain'].get('3h', 0) * 20)
+            elif condition in ['rainy', 'stormy']:
+                rain_prob = 70
+            elif condition == 'cloudy':
+                rain_prob = 30
+            elif condition == 'partly_cloudy':
+                rain_prob = 15
+            
+            daily_data[date_key]['rain_probs'].append(rain_prob)
+        
+        forecast = []
+        for date_key in sorted(daily_data.keys())[:7]:
+            day_data = daily_data[date_key]
+            conditions = day_data['conditions']
+            condition = max(set(conditions), key=conditions.count) if conditions else 'sunny'
+            
+            forecast.append({
+                'day': day_data['day'], 'date': date_key, 'condition': condition,
+                'temp_high': round(max(day_data['temps'])) if day_data['temps'] else 25,
+                'temp_low': round(min(day_data['temps'])) if day_data['temps'] else 15,
+                'rain_probability': round(sum(day_data['rain_probs']) / len(day_data['rain_probs'])) if day_data['rain_probs'] else 10
+            })
+        
+        # Fill remaining days if needed
+        while len(forecast) < 7:
+            base_date = datetime.now() + timedelta(days=len(forecast))
+            forecast.append({
+                'day': days[base_date.weekday()],
+                'date': base_date.strftime('%Y-%m-%d'),
+                'condition': 'sunny', 'temp_high': 25, 'temp_low': 15, 'rain_probability': 10
+            })
+        
+        return forecast[:7]
 
-        PUMP_FLOW_RATE = 10
+    def _parse_hourly(self, data, today_plan):
+        """Extract next 8 hours from forecast data"""
+        from datetime import datetime
+        if not data or 'list' not in data:
+            return []
+        
+        condition_map = {
+            'clear sky': 'sunny', 'few clouds': 'partly_cloudy',
+            'scattered clouds': 'partly_cloudy', 'broken clouds': 'cloudy',
+            'overcast clouds': 'cloudy', 'shower rain': 'rainy',
+            'rain': 'rainy', 'thunderstorm': 'stormy', 'snow': 'snowy',
+            'mist': 'foggy', 'fog': 'foggy'
+        }
+        pump_times = set(today_plan.get('pump_times', []))
+        hours = []
+        for item in data['list'][:8]:
+            dt = datetime.fromtimestamp(item['dt'])
+            hour_str = dt.strftime('%H:%M')
+            weather = item.get('weather', [{}])[0]
+            description = weather.get('description', '').lower()
+            condition = condition_map.get(description, 'sunny')
+            rain_prob = 0
+            if 'rain' in item:
+                rain_prob = min(100, item['rain'].get('3h', 0) * 20)
+            elif condition in ['rainy', 'stormy']:
+                rain_prob = 70
+            elif condition == 'cloudy':
+                rain_prob = 30
+            # Check if pump runs within 30 min of this hour
+            pump_active = False
+            for pt in pump_times:
+                ph, pm = map(int, pt.split(':'))
+                diff = abs((dt.hour * 60 + dt.minute) - (ph * 60 + pm))
+                if diff <= 30:
+                    pump_active = True
+                    break
+            hours.append({
+                'time': hour_str,
+                'temp': round(item['main']['temp'], 1),
+                'feels_like': round(item['main']['feels_like'], 1),
+                'humidity': round(item['main']['humidity'], 1),
+                'condition': condition,
+                'description': weather.get('description', '').title(),
+                'rain_probability': round(rain_prob, 1),
+                'wind_speed': round(item['wind']['speed'] * 3.6, 1),
+                'pump_active': pump_active,
+            })
+        return hours
 
-        # ── Intelligence: season, crop profile, drying rate ──────────────
-        from django.utils import timezone as tz
-        today_eat = datetime.now()  # server is EAT or we use month directly
-        season      = detect_season(today_eat.month)
-        crop_profile = get_crop_profile(plant_type)
 
-        # Fetch last 30 daily logs for drying rate analysis
-        recent_logs = list(
-            DailyAgriLog.objects
-            .filter(user=request.user)
-            .order_by('date')
-            .values('avg_moisture', 'avg_temp', 'total_rain_mm')[:30]
-        )
-        drying = compute_drying_rate(recent_logs)
-
-        def irrigation_plan(condition, temp, rain_prob):
-            return compute_smart_irrigation(
-                temp=temp,
-                rain_prob=rain_prob,
-                condition=condition,
-                soil_water_factor=soil['water_factor'],
-                base_duration=base_duration,
-                crop_profile=crop_profile,
-                season=season,
-                drying=drying,
-                recent_logs=recent_logs,
-            )
-
-        # Calculate irrigation plans
-        for day_data in forecast_list:
-            plan = irrigation_plan(day_data['condition'], day_data['temp_high'], day_data['rain_probability'])
-            day_data['irrigation'] = plan
-
-        today_plan = irrigation_plan(
-            current_weather['condition'], current_weather['temperature'],
-            current_weather.get('rain_probability', 0)
-        )
-        current_weather['irrigation'] = today_plan
-
-        # ── Write / update today's DailyAgriLog ───────────────────────────
-        try:
-            log_date = today_eat.date()
-            log, _ = DailyAgriLog.objects.get_or_create(
-                user=request.user, date=log_date,
-                defaults={'season': season['key']}
-            )
-            log.avg_temp     = current_weather['temperature']
-            log.rain_prob    = current_weather.get('rain_probability', 0)
-            log.total_rain_mm = round(today_plan.get('rain_saving_l', 0) / 10, 2)
-            log.water_used_l  = today_plan.get('water_total_l', 0)
-            log.season        = season['key']
-            # avg_moisture from latest sensor reading if available
-            device = Device.objects.filter(user=request.user, status='Online').first()
-            if device:
-                latest = SensorReading.objects.filter(device=device).first()
-                if latest and latest.soil_moisture is not None:
-                    log.avg_moisture = latest.soil_moisture
-            log.save()
-        except Exception as e:
-            print(f'DailyAgriLog write error: {e}')
-
-        hourly = parse_hourly(forecast_data, today_plan)
-
-        weekly_water = round(sum(d['irrigation']['water_total_l'] for d in forecast_list), 1)
-        weekly_saving = round(sum(d['irrigation']['rain_saving_l'] for d in forecast_list), 1)
-
-        # Log this weather access
-        try:
-            from api.models import WeatherAccessLog
-            WeatherAccessLog.objects.create(
-                user=request.user,
-                lat=lat, lon=lon,
-                location=current_weather.get('location', ''),
-                success=True,
-            )
-        except Exception:
-            pass
-
-        return Response({
-            'current': current_weather,
-            'hourly': hourly,
-            'forecast': forecast_list,
-            'intelligence': {
-                'season': season,
-                'crop': {
-                    'key': crop_profile['key'],
-                    'label': crop_profile['label'],
-                    'stress_temp': crop_profile['stress_temp_high'],
-                    'stress_moisture': crop_profile['stress_moisture_low'],
-                    'season_factor': crop_profile['season_adjust'].get(season['key'], 1.0),
-                },
-                'drying': drying,
-                'log_count': len(recent_logs),
-            },
-            'irrigation_settings': {
-                'base_duration_min': base_duration,
-                'soil_type': soil_type,
-                'plant_type': settings_obj.plant_type or 'General',
-                'pump_flow_rate': PUMP_FLOW_RATE,
-                'weekly_water_l': weekly_water,
-                'weekly_saving_l': weekly_saving,
-            },
-        })
 
 
 class IntelligenceView(APIView):
@@ -1050,3 +1139,133 @@ class WeatherLocationView(APIView):
                 'message': str(e),
                 'count': 0
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# ──── Push Notifications ────────────────────────────────────────
+
+class VapidKeyView(APIView):
+    """Get VAPID public key for push subscriptions"""
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        from django.conf import settings
+        vapid_key = getattr(settings, 'VAPID_PUBLIC_KEY', '')
+        return Response({
+            'vapid_key': vapid_key,
+        })
+
+
+class PushSubscribeView(APIView):
+    """Subscribe user to push notifications"""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        from .models import PushSubscription
+        
+        endpoint = request.data.get('endpoint')
+        auth = request.data.get('auth')
+        p256dh = request.data.get('p256dh')
+        
+        if not all([endpoint, auth, p256dh]):
+            return Response(
+                {'detail': 'Missing required subscription fields'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            subscription, created = PushSubscription.objects.get_or_create(
+                endpoint=endpoint,
+                defaults={
+                    'user': request.user,
+                    'auth': auth,
+                    'p256dh': p256dh,
+                }
+            )
+            
+            if not created:
+                # Update existing subscription
+                subscription.auth = auth
+                subscription.p256dh = p256dh
+                subscription.user = request.user
+                subscription.save()
+            
+            return Response({
+                'status': 'subscribed',
+                'endpoint': endpoint[:50] + '...',
+            }, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+        
+        except Exception as e:
+            return Response(
+                {'detail': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+
+class PushUnsubscribeView(APIView):
+    """Unsubscribe user from push notifications"""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        from .models import PushSubscription
+        
+        endpoint = request.data.get('endpoint')
+        
+        if not endpoint:
+            return Response(
+                {'detail': 'Endpoint required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            subscription = PushSubscription.objects.get(
+                endpoint=endpoint,
+                user=request.user
+            )
+            subscription.delete()
+            
+            return Response({
+                'status': 'unsubscribed',
+            })
+        
+        except PushSubscription.DoesNotExist:
+            return Response(
+                {'detail': 'Subscription not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            return Response(
+                {'detail': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+
+class BadgeView(APIView):
+    """Get unread notification count for badge"""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        unread_count = Notification.objects.filter(
+            user=request.user,
+            is_read=False
+        ).count()
+        
+        return Response({
+            'unread_count': unread_count,
+        })
+
+
+class TestPushView(APIView):
+    """Send a test push notification"""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        from .push_utils import send_test_push
+        
+        result = send_test_push(request.user)
+        
+        return Response({
+            'status': 'sent',
+            'success': result['success'],
+            'failed': result['failed'],
+            'errors': result['errors'],
+        })

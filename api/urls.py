@@ -8,6 +8,7 @@ from .views import (
     FarmSettingsView, PairDeviceView, TestDeviceView,
     SensorIngestView, LiveDataView, PumpControlView, IntelligenceView,
     PlantProfilesView,
+    VapidKeyView, PushSubscribeView, PushUnsubscribeView, BadgeView, TestPushView,
 )
 
 urlpatterns = [
@@ -27,6 +28,11 @@ urlpatterns = [
     path('notifications/unread-count/',    NotificationUnreadCountView.as_view(),  name='notification-unread-count'),
     path('notifications/mark-all-read/',   NotificationMarkAllReadView.as_view(),  name='notification-mark-all'),
     path('notifications/<int:pk>/',        NotificationDetailView.as_view(),       name='notification-detail'),
+    path('notifications/vapid-key/',       VapidKeyView.as_view(),                 name='vapid-key'),
+    path('notifications/subscribe/',       PushSubscribeView.as_view(),            name='push-subscribe'),
+    path('notifications/unsubscribe/',     PushUnsubscribeView.as_view(),          name='push-unsubscribe'),
+    path('notifications/badge/',           BadgeView.as_view(),                    name='badge'),
+    path('notifications/test-push/',       TestPushView.as_view(),                 name='test-push'),
     path('wifi/status/',                   WifiStatusView.as_view(),               name='wifi-status'),
     path('wifi/scan/',                     WifiScanView.as_view(),                 name='wifi-scan'),
     path('wifi/configure/',                WifiConfigureView.as_view(),            name='wifi-configure'),

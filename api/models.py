@@ -196,6 +196,21 @@ class PlantProfile(models.Model):
         return f'{self.label} ({self.key})'
 
 
+class PushSubscription(models.Model):
+    """Stores browser Web Push subscriptions per user device."""
+    user       = models.ForeignKey(User, on_delete=models.CASCADE, related_name='push_subscriptions')
+    endpoint   = models.TextField(unique=True)
+    p256dh     = models.TextField()
+    auth       = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.user.email} — {self.endpoint[:60]}'
+
+
 class SystemSettings(models.Model):
     """Singleton — only one row ever exists (pk=1)"""
     system_online        = models.BooleanField(default=True)

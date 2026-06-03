@@ -13,7 +13,9 @@ try:
     REDIS_AVAILABLE = True
 except ImportError:
     REDIS_AVAILABLE = False
-    _MEMORY_CACHE = {}
+
+# In-memory cache always available as fallback
+_MEMORY_CACHE = {}
 
 
 def get_redis_client():
