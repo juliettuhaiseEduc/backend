@@ -89,6 +89,8 @@ class DashboardView(APIView):
         # Fetch latest sensor reading from the first online device
         soil_moisture, water_tank_level, pump_status, irrigation_cycles = 0, 0, 'Off', 0
         moisture_trend = []
+        soil_temperature_trend = []
+        soil_humidity_trend = []
         irrigation_history = []
 
         if online:
@@ -111,6 +113,14 @@ class DashboardView(APIView):
                 {'time': r.recorded_at.strftime('%H:%M'), 'moisture': r.soil_moisture or 0}
                 for r in recent_readings
             ]
+            soil_temperature_trend = [
+                {'time': r.recorded_at.strftime('%H:%M'), 'temperature': r.temperature or 0}
+                for r in recent_readings if r.temperature is not None
+            ]
+            soil_humidity_trend = [
+                {'time': r.recorded_at.strftime('%H:%M'), 'humidity': r.humidity or 0}
+                for r in recent_readings if r.humidity is not None
+            ]
             irrigation_history = [
                 {'time': r.recorded_at.strftime('%H:%M'), 'cycles': r.irrig_cycles or 0}
                 for r in recent_readings
@@ -127,9 +137,11 @@ class DashboardView(APIView):
             'water_tank_level':   water_tank_level,
             'pump_status':        pump_status,
             'irrigation_cycles':  irrigation_cycles,
-            'moisture_trend':     moisture_trend,
-            'temperature_trend':  temperature_trend,
-            'irrigation_history': irrigation_history,
+            'moisture_trend':          moisture_trend,
+            'temperature_trend':        temperature_trend,
+            'soil_temperature_trend':   soil_temperature_trend,
+            'soil_humidity_trend':      soil_humidity_trend,
+            'irrigation_history':       irrigation_history,
         }
         return Response(data)
 
