@@ -1,5 +1,6 @@
 from django.urls import path
 from .views import (
+    GPSFallbackView,
     DeviceListView, DeviceDetailView, ConnectDeviceView,
     DashboardView, HealthCheckView, WeatherView, WeatherLocationView, LocationSearchView,
     NotificationListView, NotificationDetailView, NotificationMarkAllReadView,
@@ -40,4 +41,5 @@ urlpatterns = [
     path('location-search/',              LocationSearchView.as_view(),           name='location-search'),
     path('farm-settings/',                 FarmSettingsView.as_view(),             name='farm-settings'),
     path('plant-profiles/',                PlantProfilesView.as_view(),            name='plant-profiles'),
+    path('device/gps-fallback/',           GPSFallbackView.as_view(),              name='gps-fallback'),
 ]

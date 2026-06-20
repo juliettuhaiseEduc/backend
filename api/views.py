@@ -1143,6 +1143,70 @@ class WeatherLocationView(APIView):
 
 # ──── Push Notifications ────────────────────────────────────────
 
+
+class GPSFallbackView(APIView):
+    """
+    ESP32 calls this when A9G GPS fails.
+    Returns saved lat/lon from FarmSettings for the device owner.
+    Auth: device_id + secret_key (same as SensorIngestView).
+    GET /api/device/gps-fallback/?device_id=X&secret_key=Y
+    """
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        device_id  = request.GET.get("device_id", "").strip()
+        secret_key = request.GET.get("secret_key", "").strip()
+
+        if not device_id or not secret_key:
+            return Response(
+                {"error": "device_id and secret_key are required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        device = Device.objects.filter(
+            device_id=device_id, secret_key=secret_key
+        ).first()
+
+        if not device:
+            return Response(
+                {"error": "Invalid device credentials"},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
+        # Priority 1: admin-set weather location
+        fs = FarmSettings.objects.filter(user=device.user).first()
+        if fs:
+            if fs.admin_weather_lat is not None and fs.admin_weather_lon is not None:
+                return Response({
+                    "lat":   fs.admin_weather_lat,
+                    "lon":   fs.admin_weather_lon,
+                    "place": fs.admin_weather_location_name or "Admin Location",
+                    "source": "admin",
+                })
+            if fs.weather_lat is not None and fs.weather_lon is not None:
+                return Response({
+                    "lat":   fs.weather_lat,
+                    "lon":   fs.weather_lon,
+                    "place": fs.weather_location_name or "Farm Location",
+                    "source": "farm_settings",
+                })
+
+        # Priority 2: latest LocationCache entry (any cached search)
+        cached = LocationCache.objects.order_by("-created_at").first()
+        if cached:
+            return Response({
+                "lat":   cached.latitude,
+                "lon":   cached.longitude,
+                "place": cached.display_name,
+                "source": "location_cache",
+            })
+
+        return Response(
+            {"error": "No location data available in backend"},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+
 class VapidKeyView(APIView):
     """Get VAPID public key for push subscriptions"""
     permission_classes = [AllowAny]
