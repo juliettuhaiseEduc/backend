@@ -332,13 +332,13 @@ class LiveDataView(APIView):
         # Latest reading per device
         latest = []
         for dev in devices:
-            r = SensorReading.objects.filter(device=dev).first()
+            r = SensorReading.objects.filter(device=dev).order_by('-recorded_at').first()
             if r:
                 latest.append(SensorReadingSerializer(r).data)
 
-        # History: last 50 readings across all user devices
-        qs = SensorReading.objects.filter(device__in=devices).order_by('recorded_at')[:50]
-        history = SensorReadingSerializer(qs, many=True).data
+        # History: last 50 readings ordered oldest -> newest for charts
+        qs = SensorReading.objects.filter(device__in=devices).order_by('-recorded_at')[:50]
+        history = SensorReadingSerializer(list(reversed(list(qs))), many=True).data
 
         # Device list for selector
         device_list = DeviceSerializer(devices, many=True).data
