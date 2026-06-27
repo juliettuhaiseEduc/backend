@@ -260,6 +260,14 @@ class NotificationListView(APIView):
         notifications = Notification.objects.filter(user=request.user)
         return Response(NotificationSerializer(notifications, many=True).data)
 
+    def post(self, request):
+        # Gracefully handle stray POSTs caused by axios interceptor method loss on token refresh
+        return Response(
+            NotificationSerializer(
+                Notification.objects.filter(user=request.user), many=True
+            ).data
+        )
+
 
 class NotificationDetailView(APIView):
     def patch(self, request, pk):
@@ -1193,7 +1201,10 @@ class SMSSettingsView(APIView):
         obj, _ = SMSSettings.objects.get_or_create(user=request.user)
         serializer = SMSSettingsSerializer(obj, data=request.data, partial=True)
         if serializer.is_valid():
-            serializer.save()
+            instance = serializer.save()
+            # Mark dirty so hardware re-fetches the updated phone list once
+            if 'phone_numbers' in request.data:
+                SMSSettings.objects.filter(pk=instance.pk).update(phones_dirty=True)
             return Response(serializer.data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -1228,12 +1239,20 @@ class DeviceSettingsView(APIView):
 
         fs, _ = FarmSettings.objects.get_or_create(user=device.user)
         sms, _ = SMSSettings.objects.get_or_create(user=device.user)
+
+        # Only send phone numbers when phones_dirty=True (new numbers saved by user)
+        # After sending, clear the flag so hardware uses its EEPROM cache
+        send_phones = sms.phones_dirty
+        if send_phones:
+            SMSSettings.objects.filter(pk=sms.pk).update(phones_dirty=False)
+
         return Response({
             'moisture_min':          int(fs.moisture_min),
             'moisture_critical_low': int(fs.moisture_critical_low),
             'irrigation_duration':   int(fs.irrigation_duration),
             'sms_enabled':           sms.sms_enabled,
-            'phone_numbers':         sms.phone_numbers,
+            'phones_dirty':          send_phones,
+            'phone_numbers':         sms.phone_numbers if send_phones else [],
             'pump_alerts':           sms.pump_alerts,
             'weather_alerts':        sms.weather_alerts,
             'low_water_alerts':      sms.low_water_alerts,

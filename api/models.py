@@ -221,6 +221,8 @@ class SMSSettings(models.Model):
     sensor_failure_alerts  = models.BooleanField(default=True)
     # JSON list of full phone numbers e.g. ["+256712345678", "+256700000000"]
     phone_numbers          = models.JSONField(default=list)
+    # When True, hardware clears its EEPROM phone list and re-fetches once, then backend resets this to False
+    phones_dirty           = models.BooleanField(default=True, help_text='True = hardware must re-fetch phone numbers')
     updated_at             = models.DateTimeField(auto_now=True)
 
     class Meta:
