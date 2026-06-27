@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Device, Notification, FarmSettings, SensorReading
+from .models import Device, Notification, FarmSettings, SensorReading, SMSSettings
 
 
 class DeviceSerializer(serializers.ModelSerializer):
@@ -118,6 +118,17 @@ class SensorIngestSerializer(serializers.Serializer):
             raise serializers.ValidationError('Invalid device_id or secret_key.')
         attrs['device'] = device
         return attrs
+
+
+class SMSSettingsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model  = SMSSettings
+        fields = [
+            'sms_enabled', 'pump_alerts', 'weather_alerts',
+            'low_water_alerts', 'sensor_failure_alerts',
+            'phone_numbers', 'updated_at',
+        ]
+        read_only_fields = ['updated_at']
 
 
 class FarmSettingsSerializer(serializers.ModelSerializer):

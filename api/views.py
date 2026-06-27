@@ -4,12 +4,12 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework import status
 from django.shortcuts import get_object_or_404
 from django.conf import settings
-from .models import Device, Notification, FarmSettings, SensorReading, DailyAgriLog, LocationCache, PumpCommand, PlantProfile
+from .models import Device, Notification, FarmSettings, SensorReading, DailyAgriLog, LocationCache, PumpCommand, PlantProfile, SMSSettings
 from .intelligence import detect_season, get_crop_profile, compute_drying_rate, compute_smart_irrigation
 from .serializers import (
     DeviceSerializer, ConnectDeviceSerializer, NotificationSerializer,
     FarmSettingsSerializer, PairDeviceSerializer, TestDeviceSerializer,
-    SensorReadingSerializer, SensorIngestSerializer,
+    SensorReadingSerializer, SensorIngestSerializer, SMSSettingsSerializer,
 )
 from . import notification_service as ns
 
@@ -1142,6 +1142,103 @@ class WeatherLocationView(APIView):
 
 
 # ──── Push Notifications ────────────────────────────────────────
+
+
+class DeviceActivateView(APIView):
+    """
+    Hardware calls this on first boot to exchange (device_id + pairing_code) for secret_key.
+    GET /api/device/activate/?device_id=X&pairing_code=Y
+    Returns secret_key only if device exists and pairing_code matches.
+    Works whether or not the device is already paired to a user account.
+    """
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        device_id    = request.GET.get('device_id', '').strip()
+        pairing_code = request.GET.get('pairing_code', '').strip()
+
+        if not device_id or not pairing_code:
+            return Response(
+                {'error': 'device_id and pairing_code are required'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        device = Device.objects.filter(
+            device_id=device_id, pairing_code=pairing_code
+        ).first()
+
+        if not device:
+            return Response(
+                {'error': 'Invalid device_id or pairing_code'},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
+        return Response({
+            'secret_key': device.secret_key,
+            'device_name': device.device_name,
+            'is_paired': device.is_paired,
+        })
+
+
+class SMSSettingsView(APIView):
+    """
+    GET  /api/sms-settings/  — return current SMS config
+    POST /api/sms-settings/  — create or update SMS config
+    """
+    def get(self, request):
+        obj, _ = SMSSettings.objects.get_or_create(user=request.user)
+        return Response(SMSSettingsSerializer(obj).data)
+
+    def post(self, request):
+        obj, _ = SMSSettings.objects.get_or_create(user=request.user)
+        serializer = SMSSettingsSerializer(obj, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class DeviceSettingsView(APIView):
+    """
+    Hardware polls this to get farmer-configured thresholds.
+    Auth: device_id + secret_key (no user token needed).
+    GET /api/device/settings/?device_id=X&secret_key=Y
+    Returns moisture_min and moisture_critical_low from the device owner's FarmSettings.
+    """
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        device_id  = request.GET.get('device_id', '').strip()
+        secret_key = request.GET.get('secret_key', '').strip()
+
+        if not device_id or not secret_key:
+            return Response(
+                {'error': 'device_id and secret_key are required'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        device = Device.objects.filter(
+            device_id=device_id, secret_key=secret_key
+        ).first()
+        if not device:
+            return Response(
+                {'error': 'Invalid device credentials'},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
+        fs, _ = FarmSettings.objects.get_or_create(user=device.user)
+        sms, _ = SMSSettings.objects.get_or_create(user=device.user)
+        return Response({
+            'moisture_min':          int(fs.moisture_min),
+            'moisture_critical_low': int(fs.moisture_critical_low),
+            'irrigation_duration':   int(fs.irrigation_duration),
+            'sms_enabled':           sms.sms_enabled,
+            'phone_numbers':         sms.phone_numbers,
+            'pump_alerts':           sms.pump_alerts,
+            'weather_alerts':        sms.weather_alerts,
+            'low_water_alerts':      sms.low_water_alerts,
+            'sensor_failure_alerts': sms.sensor_failure_alerts,
+        })
 
 
 class GPSFallbackView(APIView):

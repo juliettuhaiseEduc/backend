@@ -211,6 +211,25 @@ class PushSubscription(models.Model):
         return f'{self.user.email} — {self.endpoint[:60]}'
 
 
+class SMSSettings(models.Model):
+    """Per-user SMS alert configuration — synced to hardware via DeviceSettingsView."""
+    user                   = models.OneToOneField(User, on_delete=models.CASCADE, related_name='sms_settings')
+    sms_enabled            = models.BooleanField(default=False)
+    pump_alerts            = models.BooleanField(default=True)
+    weather_alerts         = models.BooleanField(default=True)
+    low_water_alerts       = models.BooleanField(default=True)
+    sensor_failure_alerts  = models.BooleanField(default=True)
+    # JSON list of full phone numbers e.g. ["+256712345678", "+256700000000"]
+    phone_numbers          = models.JSONField(default=list)
+    updated_at             = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'SMS Settings'
+
+    def __str__(self):
+        return f'{self.user.email} — SMS {"on" if self.sms_enabled else "off"}'
+
+
 class SystemSettings(models.Model):
     """Singleton — only one row ever exists (pk=1)"""
     system_online        = models.BooleanField(default=True)
