@@ -121,6 +121,12 @@ class SensorIngestSerializer(serializers.Serializer):
 
 
 class SMSSettingsSerializer(serializers.ModelSerializer):
+    phone_numbers = serializers.ListField(
+        child=serializers.CharField(max_length=20),
+        required=False,
+        default=list,
+    )
+
     class Meta:
         model  = SMSSettings
         fields = [
@@ -129,6 +135,18 @@ class SMSSettingsSerializer(serializers.ModelSerializer):
             'phone_numbers', 'updated_at',
         ]
         read_only_fields = ['updated_at']
+
+    def validate_phone_numbers(self, value):
+        cleaned = []
+        for num in value:
+            num = num.strip()
+            if not num:
+                continue
+            # Strip leading zeros, ensure + prefix
+            if not num.startswith('+'):
+                num = '+' + num.lstrip('0')
+            cleaned.append(num)
+        return cleaned
 
 
 class FarmSettingsSerializer(serializers.ModelSerializer):

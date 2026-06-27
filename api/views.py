@@ -1200,13 +1200,15 @@ class SMSSettingsView(APIView):
     def post(self, request):
         obj, _ = SMSSettings.objects.get_or_create(user=request.user)
         serializer = SMSSettingsSerializer(obj, data=request.data, partial=True)
-        if serializer.is_valid():
-            instance = serializer.save()
-            # Mark dirty so hardware re-fetches the updated phone list once
-            if 'phone_numbers' in request.data:
-                SMSSettings.objects.filter(pk=instance.pk).update(phones_dirty=True)
-            return Response(serializer.data)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        instance = serializer.save()
+        # Mark phones dirty so hardware re-fetches once
+        if 'phone_numbers' in request.data:
+            SMSSettings.objects.filter(pk=instance.pk).update(phones_dirty=True)
+        # Refresh from DB and return to confirm what was saved
+        instance.refresh_from_db()
+        return Response(SMSSettingsSerializer(instance).data)
 
 
 class DeviceSettingsView(APIView):
