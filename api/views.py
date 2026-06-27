@@ -30,7 +30,10 @@ class DashboardView(APIView):
         from django.conf import settings as django_settings
         from .weather_cache import fetch_weather_with_cache
 
-        devices = Device.objects.filter(user=request.user)
+        if request.user.is_staff:
+            devices = Device.objects.all()
+        else:
+            devices = Device.objects.filter(user=request.user)
         online  = devices.filter(status='Online').first()
 
         location = getattr(django_settings, 'DEFAULT_WEATHER_LOCATION', {'lat': 40.7128, 'lon': -74.0060})
@@ -333,7 +336,11 @@ class LiveDataView(APIView):
 
     def get(self, request):
         device_id = request.GET.get('device_id')
-        devices   = Device.objects.filter(user=request.user)
+        # Admins see all devices; regular users see only their own
+        if request.user.is_staff:
+            devices = Device.objects.all()
+        else:
+            devices = Device.objects.filter(user=request.user)
         if device_id:
             devices = devices.filter(device_id=device_id)
 
