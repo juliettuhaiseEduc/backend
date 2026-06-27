@@ -113,7 +113,10 @@ class SensorIngestSerializer(serializers.Serializer):
 
     def validate(self, attrs):
         try:
-            device = Device.objects.get(device_id=attrs['device_id'], secret_key=attrs['secret_key'])
+            device = Device.objects.get(
+                device_id=attrs['device_id'].strip(),
+                secret_key=attrs['secret_key'].strip()
+            )
         except Device.DoesNotExist:
             raise serializers.ValidationError('Invalid device_id or secret_key.')
         attrs['device'] = device

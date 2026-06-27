@@ -1172,7 +1172,7 @@ class DeviceActivateView(APIView):
             )
 
         device = Device.objects.filter(
-            device_id=device_id, pairing_code=pairing_code
+            device_id=device_id.strip(), pairing_code=pairing_code.strip()
         ).first()
 
         if not device:
@@ -1232,7 +1232,7 @@ class DeviceSettingsView(APIView):
             )
 
         device = Device.objects.filter(
-            device_id=device_id, secret_key=secret_key
+            device_id=device_id.strip(), secret_key=secret_key.strip()
         ).first()
         if not device:
             return Response(
