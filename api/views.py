@@ -1203,10 +1203,11 @@ class SMSSettingsView(APIView):
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         instance = serializer.save()
-        # Mark phones dirty so hardware re-fetches once
         if 'phone_numbers' in request.data:
-            SMSSettings.objects.filter(pk=instance.pk).update(phones_dirty=True)
-        # Refresh from DB and return to confirm what was saved
+            try:
+                SMSSettings.objects.filter(pk=instance.pk).update(phones_dirty=True)
+            except Exception:
+                pass
         instance.refresh_from_db()
         return Response(SMSSettingsSerializer(instance).data)
 
@@ -1242,11 +1243,12 @@ class DeviceSettingsView(APIView):
         fs, _ = FarmSettings.objects.get_or_create(user=device.user)
         sms, _ = SMSSettings.objects.get_or_create(user=device.user)
 
-        # Only send phone numbers when phones_dirty=True (new numbers saved by user)
-        # After sending, clear the flag so hardware uses its EEPROM cache
-        send_phones = sms.phones_dirty
-        if send_phones:
-            SMSSettings.objects.filter(pk=sms.pk).update(phones_dirty=False)
+        try:
+            send_phones = sms.phones_dirty
+            if send_phones:
+                SMSSettings.objects.filter(pk=sms.pk).update(phones_dirty=False)
+        except Exception:
+            send_phones = True  # migration not yet run — always send
 
         return Response({
             'moisture_min':          int(fs.moisture_min),
