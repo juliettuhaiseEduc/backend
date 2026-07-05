@@ -14,6 +14,41 @@ from .serializers import (
 from . import notification_service as ns
 
 
+class HardwareOrderListView(APIView):
+    """GET /api/orders/hardware/ — admin only, returns all orders newest first."""
+
+    def get(self, request):
+        orders = HardwareOrder.objects.all()
+        data = [{
+            'id':         o.id,
+            'name':       o.name,
+            'phone':      o.phone,
+            'email':      o.email,
+            'location':   o.location,
+            'kit_type':   o.kit_type,
+            'quantity':   o.quantity,
+            'total_ugx':  o.total_ugx,
+            'notes':      o.notes,
+            'status':     o.status,
+            'created_at': o.created_at.isoformat(),
+        } for o in orders]
+        return Response(data)
+
+
+class HardwareOrderDetailView(APIView):
+    """PATCH /api/orders/hardware/<id>/ — admin only, update status."""
+
+    def patch(self, request, pk):
+        order = get_object_or_404(HardwareOrder, pk=pk)
+        new_status = request.data.get('status')
+        valid = [s[0] for s in HardwareOrder.STATUS_CHOICES]
+        if new_status not in valid:
+            return Response({'detail': f'Invalid status. Choose from {valid}.'}, status=status.HTTP_400_BAD_REQUEST)
+        order.status = new_status
+        order.save(update_fields=['status'])
+        return Response({'id': order.id, 'status': order.status})
+
+
 class HardwareOrderView(APIView):
     """
     POST /api/orders/hardware/

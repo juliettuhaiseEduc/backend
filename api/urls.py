@@ -10,7 +10,7 @@ from .views import (
     SensorIngestView, LiveDataView, PumpControlView, IntelligenceView,
     PlantProfilesView, SMSSettingsView,
     VapidKeyView, PushSubscribeView, PushUnsubscribeView, BadgeView, TestPushView,
-    HardwareOrderView,
+    HardwareOrderView, HardwareOrderListView, HardwareOrderDetailView,
 )
 
 urlpatterns = [
@@ -45,6 +45,8 @@ urlpatterns = [
     path('sms-settings/',                  SMSSettingsView.as_view(),              name='sms-settings'),
     path('plant-profiles/',                PlantProfilesView.as_view(),            name='plant-profiles'),
     path('orders/hardware/',               HardwareOrderView.as_view(),            name='hardware-order'),
+    path('orders/hardware/list/',          HardwareOrderListView.as_view(),        name='hardware-order-list'),
+    path('orders/hardware/<int:pk>/',      HardwareOrderDetailView.as_view(),      name='hardware-order-detail'),
 
     path('device/settings/',               DeviceSettingsView.as_view(),           name='device-settings'),
     path('device/activate/',               DeviceActivateView.as_view(),           name='device-activate'),
