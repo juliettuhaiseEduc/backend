@@ -10,6 +10,7 @@ from .views import (
     SensorIngestView, LiveDataView, PumpControlView, IntelligenceView,
     PlantProfilesView, SMSSettingsView,
     VapidKeyView, PushSubscribeView, PushUnsubscribeView, BadgeView, TestPushView,
+    HardwareOrderView,
 )
 
 urlpatterns = [
@@ -43,7 +44,8 @@ urlpatterns = [
     path('farm-settings/',                 FarmSettingsView.as_view(),             name='farm-settings'),
     path('sms-settings/',                  SMSSettingsView.as_view(),              name='sms-settings'),
     path('plant-profiles/',                PlantProfilesView.as_view(),            name='plant-profiles'),
-    path('device/gps-fallback/',           GPSFallbackView.as_view(),              name='gps-fallback'),
+    path('orders/hardware/',               HardwareOrderView.as_view(),            name='hardware-order'),
+
     path('device/settings/',               DeviceSettingsView.as_view(),           name='device-settings'),
     path('device/activate/',               DeviceActivateView.as_view(),           name='device-activate'),
 ]

@@ -235,23 +235,31 @@ class SMSSettings(models.Model):
         return f'{self.user.email} — SMS {"on" if self.sms_enabled else "off"}'
 
 
-class SystemSettings(models.Model):
-    """Singleton — only one row ever exists (pk=1)"""
-    system_online        = models.BooleanField(default=True)
-    maintenance_title    = models.CharField(max_length=200, default='System Maintenance')
-    maintenance_message  = models.TextField(default='The system is currently under maintenance. Please check back later.')
-    maintenance_sub      = models.CharField(max_length=300, blank=True, default='We apologize for the inconvenience.')
-    online_at            = models.DateTimeField(null=True, blank=True, help_text='Scheduled time to go back online')
-    updated_at           = models.DateTimeField(auto_now=True)
-    updated_by           = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
+class HardwareOrder(models.Model):
+    KIT_CHOICES = [
+        ('basic',    'Basic Kit — UGX 500,000'),
+        ('advanced', 'Advanced Kit — UGX 2,000,000'),
+    ]
+    STATUS_CHOICES = [
+        ('pending',    'Pending'),
+        ('confirmed',  'Confirmed'),
+        ('shipped',    'Shipped'),
+        ('delivered',  'Delivered'),
+        ('cancelled',  'Cancelled'),
+    ]
+    name         = models.CharField(max_length=150)
+    phone        = models.CharField(max_length=20)
+    email        = models.CharField(max_length=254, blank=True)
+    location     = models.CharField(max_length=255, blank=True)
+    kit_type     = models.CharField(max_length=20, choices=KIT_CHOICES)
+    quantity     = models.PositiveIntegerField(default=1)
+    total_ugx    = models.PositiveIntegerField()
+    notes        = models.TextField(blank=True)
+    status       = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    created_at   = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        verbose_name = 'System Settings'
-
-    @classmethod
-    def get(cls):
-        obj, _ = cls.objects.get_or_create(pk=1)
-        return obj
+        ordering = ['-created_at']
 
     def __str__(self):
-        return f'System {"Online" if self.system_online else "Offline"}'
+        return f'{self.name} — {self.kit_type} x{self.quantity} ({self.status})'

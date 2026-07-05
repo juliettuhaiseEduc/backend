@@ -4,7 +4,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework import status
 from django.shortcuts import get_object_or_404
 from django.conf import settings
-from .models import Device, Notification, FarmSettings, SensorReading, DailyAgriLog, LocationCache, PumpCommand, PlantProfile, SMSSettings
+from .models import Device, Notification, FarmSettings, SensorReading, DailyAgriLog, LocationCache, PumpCommand, PlantProfile, SMSSettings, HardwareOrder
 from .intelligence import detect_season, get_crop_profile, compute_drying_rate, compute_smart_irrigation
 from .serializers import (
     DeviceSerializer, ConnectDeviceSerializer, NotificationSerializer,
@@ -13,6 +13,74 @@ from .serializers import (
 )
 from . import notification_service as ns
 
+
+class HardwareOrderView(APIView):
+    """
+    POST /api/orders/hardware/
+    Anyone can place an order (no auth required).
+    Creates a HardwareOrder, notifies all admin accounts via Notification,
+    and sends a WhatsApp message to 0786023858.
+    """
+    permission_classes = [AllowAny]
+
+    PRICES = {'basic': 500_000, 'advanced': 2_000_000}
+    WHATSAPP_NUMBER = '256786023858'  # 0786023858 in international format
+
+    def post(self, request):
+        data     = request.data
+        name     = data.get('name', '').strip()
+        phone    = data.get('phone', '').strip()
+        email    = data.get('email', '').strip()
+        location = data.get('location', '').strip()
+        kit_type = data.get('kit_type', '').strip()
+        quantity = int(data.get('quantity', 1))
+        notes    = data.get('notes', '').strip()
+
+        if not name or not phone:
+            return Response({'detail': 'Name and phone are required.'}, status=status.HTTP_400_BAD_REQUEST)
+        if kit_type not in self.PRICES:
+            return Response({'detail': 'Invalid kit type.'}, status=status.HTTP_400_BAD_REQUEST)
+        if quantity < 1 or quantity > 10:
+            return Response({'detail': 'Quantity must be between 1 and 10.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        total = self.PRICES[kit_type] * quantity
+        order = HardwareOrder.objects.create(
+            name=name, phone=phone, email=email, location=location,
+            kit_type=kit_type, quantity=quantity, total_ugx=total, notes=notes,
+        )
+
+        kit_label = dict(HardwareOrder.KIT_CHOICES)[kit_type]
+        msg = (
+            f'New hardware order #{order.id}\n'
+            f'Kit: {kit_label} x{quantity}\n'
+            f'Total: UGX {total:,}\n'
+            f'Customer: {name} | {phone}'
+            + (f' | {email}' if email else '')
+            + (f'\nLocation: {location}' if location else '')
+            + (f'\nNotes: {notes}' if notes else '')
+        )
+
+        # Notify all admin users in-app
+        from users.models import User
+        admins = User.objects.filter(is_staff=True)
+        for admin in admins:
+            Notification.objects.create(
+                user=admin, type='system',
+                title=f'New Hardware Order #{order.id}',
+                message=msg,
+            )
+
+        # Build WhatsApp deep-link (backend returns it; frontend opens it)
+        import urllib.parse
+        wa_text = urllib.parse.quote(msg)
+        whatsapp_url = f'https://wa.me/{self.WHATSAPP_NUMBER}?text={wa_text}'
+
+        return Response({
+            'order_id':      order.id,
+            'status':        order.status,
+            'total_ugx':     total,
+            'whatsapp_url':  whatsapp_url,
+        }, status=status.HTTP_201_CREATED)
 
 class HealthCheckView(APIView):
     permission_classes = [AllowAny]
