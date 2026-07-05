@@ -263,3 +263,25 @@ class HardwareOrder(models.Model):
 
     def __str__(self):
         return f'{self.name} — {self.kit_type} x{self.quantity} ({self.status})'
+
+
+class SystemSettings(models.Model):
+    """Singleton — only one row ever exists (pk=1)"""
+    system_online        = models.BooleanField(default=True)
+    maintenance_title    = models.CharField(max_length=200, default='System Maintenance')
+    maintenance_message  = models.TextField(default='The system is currently under maintenance. Please check back later.')
+    maintenance_sub      = models.CharField(max_length=300, blank=True, default='We apologize for the inconvenience.')
+    online_at            = models.DateTimeField(null=True, blank=True, help_text='Scheduled time to go back online')
+    updated_at           = models.DateTimeField(auto_now=True)
+    updated_by           = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
+
+    class Meta:
+        verbose_name = 'System Settings'
+
+    @classmethod
+    def get(cls):
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj
+
+    def __str__(self):
+        return f'System {"Online" if self.system_online else "Offline"}'
