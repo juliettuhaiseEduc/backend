@@ -18,6 +18,9 @@ class Device(models.Model):
     last_seen         = models.DateTimeField(null=True, blank=True)
     created_at        = models.DateTimeField(auto_now_add=True)
     paired_at         = models.DateTimeField(null=True, blank=True)
+    wifi_ssid         = models.CharField(max_length=64, blank=True, default='')
+    wifi_password     = models.CharField(max_length=64, blank=True, default='')
+    wifi_pending      = models.BooleanField(default=False)  # True = hardware must fetch new creds
 
     def __str__(self):
         return f'{self.device_name} ({self.device_id})'

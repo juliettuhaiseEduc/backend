@@ -409,10 +409,42 @@ class WifiConfigureView(APIView):
         password = request.data.get('password', '').strip()
         if not ssid:
             return Response({'detail': 'SSID is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        # Save to the user's first device so hardware can poll and apply
+        device = Device.objects.filter(user=request.user).first()
+        if device:
+            device.wifi_ssid     = ssid
+            device.wifi_password = password
+            device.wifi_pending  = True
+            device.save(update_fields=['wifi_ssid', 'wifi_password', 'wifi_pending'])
         return Response({
-            'message':    f'Configuration for "{ssid}" submitted successfully.',
-            'connection': {'ssid': ssid, 'status': 'Connecting'},
+            'message':    f'Configuration for "{ssid}" saved. Device will apply on next poll.',
+            'connection': {'ssid': ssid, 'status': 'Pending'},
         })
+
+
+class WifiCredentialsFetchView(APIView):
+    """
+    Hardware polls this to get pending WiFi credentials.
+    Auth: device_id + secret_key.
+    GET /api/wifi/credentials/?device_id=X&secret_key=Y
+    Returns ssid+password only when wifi_pending=True, then clears the flag.
+    """
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        device_id  = request.GET.get('device_id', '').strip()
+        secret_key = request.GET.get('secret_key', '').strip()
+        if not device_id or not secret_key:
+            return Response({'error': 'device_id and secret_key are required'}, status=status.HTTP_400_BAD_REQUEST)
+        device = Device.objects.filter(device_id=device_id, secret_key=secret_key).first()
+        if not device:
+            return Response({'error': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
+        if not device.wifi_pending:
+            return Response({'pending': False})
+        ssid     = device.wifi_ssid
+        password = device.wifi_password
+        Device.objects.filter(pk=device.pk).update(wifi_pending=False)
+        return Response({'pending': True, 'ssid': ssid, 'password': password})
 
 
 class WeatherLocationSettingsView(APIView):
