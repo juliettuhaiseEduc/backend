@@ -95,7 +95,8 @@ class SensorReadingSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'device_id', 'device_name',
             'soil_moisture', 'temperature', 'humidity',
-            'water_tank', 'pump_status', 'irrig_cycles', 'recorded_at',
+            'water_tank', 'pump_status', 'irrig_cycles',
+            'gps_lat', 'gps_lon', 'gps_place', 'recorded_at',
         ]
         read_only_fields = ['id', 'recorded_at', 'device_name', 'device_id']
 
@@ -110,6 +111,9 @@ class SensorIngestSerializer(serializers.Serializer):
     water_tank    = serializers.FloatField(required=False, allow_null=True)
     pump_status   = serializers.CharField(max_length=20, default='Off')
     irrig_cycles  = serializers.IntegerField(default=0)
+    gps_lat       = serializers.FloatField(required=False, allow_null=True)
+    gps_lon       = serializers.FloatField(required=False, allow_null=True)
+    gps_place     = serializers.CharField(max_length=200, required=False, allow_blank=True, default='')
 
     def validate(self, attrs):
         try:
@@ -145,10 +149,12 @@ class SMSSettingsSerializer(serializers.ModelSerializer):
             num = num.strip()
             if not num:
                 continue
-            # Strip leading zeros, ensure + prefix
-            if not num.startswith('+'):
-                num = '+' + num.lstrip('0')
-            cleaned.append(num)
+            # Already a full international number — keep as-is
+            if num.startswith('+'):
+                cleaned.append(num)
+                continue
+            # Local number without + — strip leading zeros and add +
+            cleaned.append('+' + num.lstrip('0'))
         return cleaned
 
 

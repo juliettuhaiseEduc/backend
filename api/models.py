@@ -67,6 +67,9 @@ class SensorReading(models.Model):
     water_tank     = models.FloatField(null=True, blank=True)
     pump_status    = models.CharField(max_length=20, default='Off')
     irrig_cycles   = models.PositiveIntegerField(default=0)
+    gps_lat        = models.FloatField(null=True, blank=True)
+    gps_lon        = models.FloatField(null=True, blank=True)
+    gps_place      = models.CharField(max_length=200, blank=True, default='')
     recorded_at    = models.DateTimeField(auto_now_add=True, db_index=True)
 
     class Meta:
@@ -83,10 +86,11 @@ class PumpCommand(models.Model):
     """Separate model for pump control events — keeps sensor history clean."""
     STATUS_CHOICES = [('On', 'On'), ('Off', 'Off')]
     
-    device      = models.ForeignKey(Device, on_delete=models.CASCADE, related_name='pump_commands')
-    command     = models.CharField(max_length=10, choices=STATUS_CHOICES)
-    issued_by   = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='pump_commands')
-    issued_at   = models.DateTimeField(auto_now_add=True, db_index=True)
+    device        = models.ForeignKey(Device, on_delete=models.CASCADE, related_name='pump_commands')
+    command       = models.CharField(max_length=10, choices=STATUS_CHOICES)
+    issued_by     = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='pump_commands')
+    issued_at     = models.DateTimeField(auto_now_add=True, db_index=True)
+    acknowledged  = models.BooleanField(default=False)  # True once hardware has polled this command
     
     class Meta:
         ordering = ['-issued_at']

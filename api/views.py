@@ -425,13 +425,56 @@ class SensorIngestView(APIView):
             water_tank=d.get('water_tank'),
             pump_status=d.get('pump_status', 'Off'),
             irrig_cycles=d.get('irrig_cycles', 0),
+            gps_lat=d.get('gps_lat'),
+            gps_lon=d.get('gps_lon'),
+            gps_place=d.get('gps_place', ''),
         )
+        # Also update device GPS location in FarmSettings if we got a fix
+        if d.get('gps_lat') and d.get('gps_lon'):
+            try:
+                fs, _ = FarmSettings.objects.get_or_create(user=device.user)
+                if fs.weather_lat is None:  # only set if user hasn't manually set one
+                    fs.weather_lat = d['gps_lat']
+                    fs.weather_lon = d['gps_lon']
+                    if d.get('gps_place'):
+                        fs.weather_location_name = d['gps_place']
+                    fs.save(update_fields=['weather_lat', 'weather_lon', 'weather_location_name'])
+            except Exception:
+                pass
         device.status    = 'Online'
         device.last_seen = timezone.now()
         device.save(update_fields=['status', 'last_seen'])
         # Auto-create notifications for critical thresholds
         ns.check_sensor_thresholds(device, reading)
         return Response({'status': 'ok', 'id': reading.id}, status=status.HTTP_201_CREATED)
+
+
+class PumpCommandPollView(APIView):
+    """
+    Hardware polls this to get the latest pending pump command.
+    Auth: device_id + secret_key.
+    GET /api/pump/poll/?device_id=X&secret_key=Y
+    Returns the latest unacknowledged command, then marks it acknowledged.
+    """
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        device_id  = request.GET.get('device_id', '').strip()
+        secret_key = request.GET.get('secret_key', '').strip()
+        if not device_id or not secret_key:
+            return Response({'error': 'device_id and secret_key required'}, status=status.HTTP_400_BAD_REQUEST)
+        device = Device.objects.filter(device_id=device_id, secret_key=secret_key).first()
+        if not device:
+            return Response({'error': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        # Get latest command not yet acknowledged by hardware
+        cmd = PumpCommand.objects.filter(device=device, acknowledged=False).order_by('-issued_at').first()
+        if not cmd:
+            return Response({'pending': False})
+
+        # Mark acknowledged
+        PumpCommand.objects.filter(pk=cmd.pk).update(acknowledged=True)
+        return Response({'pending': True, 'command': cmd.command})
 
 
 class LiveDataView(APIView):
@@ -1298,12 +1341,14 @@ class DeviceActivateView(APIView):
     """
     Hardware calls this on first boot to exchange (device_id + pairing_code) for secret_key.
     GET /api/device/activate/?device_id=X&pairing_code=Y
-    Returns secret_key only if device exists and pairing_code matches.
-    Works whether or not the device is already paired to a user account.
+    - If device exists and pairing_code matches → return secret_key.
+    - If device does NOT exist → auto-create it with a generated secret_key,
+      mark is_paired=False so the user still needs to pair it in the app.
     """
     permission_classes = [AllowAny]
 
     def get(self, request):
+        import uuid
         device_id    = request.GET.get('device_id', '').strip()
         pairing_code = request.GET.get('pairing_code', '').strip()
 
@@ -1313,13 +1358,32 @@ class DeviceActivateView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        device = Device.objects.filter(
-            device_id=device_id.strip(), pairing_code=pairing_code.strip()
-        ).first()
+        device = Device.objects.filter(device_id=device_id).first()
 
         if not device:
+            # Auto-create device record so hardware can start posting data
+            # User still needs to pair it in the app to see data on their dashboard
+            from users.models import User
+            secret_key = uuid.uuid4().hex + uuid.uuid4().hex  # 64-char random key
+            placeholder = User.objects.filter(is_staff=True).first() or User.objects.first()
+            device = Device.objects.create(
+                device_id=device_id,
+                pairing_code=pairing_code,
+                secret_key=secret_key,
+                device_name=f'EducFarm {device_id[-6:]}',
+                is_paired=False,
+                user=placeholder,
+            )
+            return Response({
+                'secret_key': device.secret_key,
+                'device_name': device.device_name,
+                'is_paired': False,
+                'created': True,
+            })
+
+        if device.pairing_code != pairing_code:
             return Response(
-                {'error': 'Invalid device_id or pairing_code'},
+                {'error': 'Invalid pairing_code'},
                 status=status.HTTP_401_UNAUTHORIZED,
             )
 
@@ -1327,6 +1391,7 @@ class DeviceActivateView(APIView):
             'secret_key': device.secret_key,
             'device_name': device.device_name,
             'is_paired': device.is_paired,
+            'created': False,
         })
 
 
