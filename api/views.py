@@ -58,7 +58,7 @@ class HardwareOrderView(APIView):
     """
     permission_classes = [AllowAny]
 
-    PRICES = {'basic': 500_000, 'advanced': 2_000_000}
+    PRICES = {'basic': 700_000, 'advanced': 2_000_000}
     WHATSAPP_NUMBER = '256786023858'  # 0786023858 in international format
 
     def post(self, request):

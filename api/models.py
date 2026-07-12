@@ -241,7 +241,7 @@ class SMSSettings(models.Model):
 
 class HardwareOrder(models.Model):
     KIT_CHOICES = [
-        ('basic',    'Basic Kit — UGX 500,000'),
+        ('basic',    'Basic Kit — UGX 700,000'),
         ('advanced', 'Advanced Kit — UGX 2,000,000'),
     ]
     STATUS_CHOICES = [
