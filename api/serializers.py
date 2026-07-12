@@ -3,10 +3,34 @@ from .models import Device, Notification, FarmSettings, SensorReading, SMSSettin
 
 
 class DeviceSerializer(serializers.ModelSerializer):
+    computed_status = serializers.SerializerMethodField()
+    seconds_since_seen = serializers.SerializerMethodField()
+
     class Meta:
         model  = Device
-        fields = ['id', 'device_id', 'device_name', 'crop_type', 'soil_type', 'status', 'last_seen', 'is_paired', 'paired_at']
+        fields = ['id', 'device_id', 'device_name', 'crop_type', 'soil_type', 'status',
+                  'computed_status', 'seconds_since_seen', 'last_seen', 'is_paired', 'paired_at']
         read_only_fields = ['id', 'device_id', 'last_seen', 'paired_at']
+
+    def get_computed_status(self, obj):
+        """Real-time status derived from last_seen — never stale."""
+        from django.utils import timezone
+        OFFLINE_AFTER = 10 * 60   # 10 minutes — no data = offline
+        SILENT_AFTER  =  2 * 60   # 2 minutes  — warn user data is delayed
+        if not obj.last_seen:
+            return 'Offline'
+        diff = (timezone.now() - obj.last_seen).total_seconds()
+        if diff > OFFLINE_AFTER:
+            return 'Offline'
+        if diff > SILENT_AFTER:
+            return 'Silent'   # connected but not actively sending
+        return 'Online'
+
+    def get_seconds_since_seen(self, obj):
+        from django.utils import timezone
+        if not obj.last_seen:
+            return None
+        return int((timezone.now() - obj.last_seen).total_seconds())
 
 
 class ConnectDeviceSerializer(serializers.ModelSerializer):
