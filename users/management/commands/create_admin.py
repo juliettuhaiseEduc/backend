@@ -3,7 +3,7 @@ from users.models import User
 
 
 class Command(BaseCommand):
-    help = 'Create a superuser admin account'
+    help = 'Create or upgrade a superadmin account with all permissions'
 
     def add_arguments(self, parser):
         parser.add_argument('email',    type=str)
@@ -15,9 +15,20 @@ class Command(BaseCommand):
         password = kwargs['password']
         name     = kwargs['name']
 
-        if User.objects.filter(email=email).exists():
-            self.stdout.write(f'Admin already exists: {email}')
-            return
+        user, created = User.objects.get_or_create(email=email)
 
-        User.objects.create_superuser(email=email, password=password, full_name=name)
-        self.stdout.write(self.style.SUCCESS(f'Superuser created: {email}'))
+        if created:
+            user.full_name = name
+            user.set_password(password)
+
+        user.is_staff       = True
+        user.is_superuser   = True
+        user.admin_level    = 'superadmin'
+        user.can_manage_users   = True
+        user.can_manage_devices = True
+        user.can_manage_weather = True
+        user.can_manage_system  = True
+        user.save()
+
+        action = 'created' if created else 'upgraded'
+        self.stdout.write(self.style.SUCCESS(f'Superadmin {action}: {email}'))
