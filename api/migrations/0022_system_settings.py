@@ -6,7 +6,7 @@ from django.conf import settings
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('api', '0021_hardware_order'),
+        ('api', '0020_add_hardware_order'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
@@ -16,13 +16,13 @@ class Migration(migrations.Migration):
         migrations.RunSQL(
             sql="""
                 CREATE TABLE IF NOT EXISTS api_systemsettings (
-                    id                  BIGSERIAL PRIMARY KEY,
-                    system_online       BOOLEAN NOT NULL DEFAULT TRUE,
+                    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+                    system_online       BOOLEAN NOT NULL DEFAULT 1,
                     maintenance_title   VARCHAR(200) NOT NULL DEFAULT 'System Maintenance',
                     maintenance_message TEXT NOT NULL DEFAULT 'The system is currently under maintenance. Please check back later.',
                     maintenance_sub     VARCHAR(300) NOT NULL DEFAULT 'We apologize for the inconvenience.',
-                    online_at           TIMESTAMP WITH TIME ZONE NULL,
-                    updated_at          TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+                    online_at           DATETIME NULL,
+                    updated_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                     updated_by_id       INTEGER NULL REFERENCES users_user(id) ON DELETE SET NULL
                 );
             """,
