@@ -27,7 +27,7 @@ SECRET_KEY = config('SECRET_KEY')
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = config('DEBUG', default='True') == 'True'
 
-ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='web-production-69d231.up.railway.app,localhost,127.0.0.1').split(',')
+ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='web-production-16c91.up.railway.app,localhost,127.0.0.1').split(',')
 
 
 # Application definition
@@ -161,7 +161,7 @@ SIMPLE_JWT = {
 
 # CORS — allow frontend origins
 CORS_ALLOWED_ORIGINS = config('CORS_ALLOWED_ORIGINS',
-    default='https://www.educfarm.com,https://educfarm.com,http://www.educfarm.com,http://educfarm.com,https://ssemata.github.io,https://kababoopishamie-oss.github.io,https://web-production-69d231.up.railway.app,http://localhost:5173,http://127.0.0.1:5173'
+    default='https://www.educfarm.com,https://educfarm.com,http://www.educfarm.com,http://educfarm.com,https://ssemata.github.io,https://kababoopishamie-oss.github.io,https://web-production-16c91.up.railway.app,http://localhost:5173,http://127.0.0.1:5173'
 ).split(',')
 
 # Weather API Configuration
