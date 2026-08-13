@@ -1,6 +1,23 @@
+import re
+
 from rest_framework import serializers
 from django.contrib.auth import authenticate
 from .models import User
+
+
+def normalize_phone_number(value):
+    if not value:
+        return ''
+
+    digits = re.sub(r'\D', '', value)
+    if not digits:
+        return ''
+
+    if digits.startswith('0') and len(digits) == 10:
+        return '256' + digits[1:]
+    if digits.startswith('256') and len(digits) == 12:
+        return digits
+    return digits
 
 
 class SignupSerializer(serializers.Serializer):
@@ -55,12 +72,21 @@ class LoginSerializer(serializers.Serializer):
         if email:
             user = authenticate(username=email, password=password)
         elif phone_number:
-            try:
-                u = User.objects.get(phone_number=phone_number)
-                if u.check_password(password):
-                    user = u
-            except User.DoesNotExist:
-                pass
+            normalized_phone = normalize_phone_number(phone_number)
+            candidates = {phone_number, normalized_phone}
+            if normalized_phone.startswith('256'):
+                candidates.add('0' + normalized_phone[3:])
+                candidates.add('+' + normalized_phone)
+            for candidate in candidates:
+                if not candidate:
+                    continue
+                try:
+                    u = User.objects.get(phone_number__iexact=candidate)
+                    if u.check_password(password):
+                        user = u
+                        break
+                except User.DoesNotExist:
+                    continue
 
         if not user:
             raise serializers.ValidationError({'detail': 'Invalid credentials.'})
