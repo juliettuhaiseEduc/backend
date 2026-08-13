@@ -3,12 +3,17 @@ from django.db import connection
 
 
 class Command(BaseCommand):
-    help = 'Drop and recreate public schema to allow clean migrations'
+    help = 'Drop all tables to allow clean migrations'
 
     def handle(self, *args, **options):
         with connection.cursor() as cursor:
-            cursor.execute("DROP SCHEMA public CASCADE;")
-            cursor.execute("CREATE SCHEMA public;")
-            cursor.execute("GRANT ALL ON SCHEMA public TO postgres;")
-            cursor.execute("GRANT ALL ON SCHEMA public TO public;")
-        self.stdout.write(self.style.SUCCESS('Schema reset successfully'))
+            cursor.execute("""
+                DO $$ DECLARE
+                    r RECORD;
+                BEGIN
+                    FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
+                        EXECUTE 'DROP TABLE IF EXISTS ' || quote_ident(r.tablename) || ' CASCADE';
+                    END LOOP;
+                END $$;
+            """)
+        self.stdout.write(self.style.SUCCESS('All tables dropped successfully'))
