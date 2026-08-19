@@ -16,7 +16,7 @@ class DeviceSerializer(serializers.ModelSerializer):
         """Real-time status derived from last_seen — never stale."""
         from django.utils import timezone
         OFFLINE_AFTER = 10 * 60   # 10 minutes — no data = offline
-        SILENT_AFTER  =  2 * 60   # 2 minutes  — warn user data is delayed
+        SILENT_AFTER  =  3 * 60   # 3 minutes  — warn user data is delayed
         if not obj.last_seen:
             return 'Offline'
         diff = (timezone.now() - obj.last_seen).total_seconds()
@@ -64,8 +64,8 @@ class PairDeviceSerializer(serializers.Serializer):
         if device.pairing_code != pairing_code:
             raise serializers.ValidationError({'pairing_code': 'Invalid pairing code.'})
 
-        if device.is_paired:
-            raise serializers.ValidationError({'device_id': 'Device is already paired to an account.'})
+        if device.is_paired and device.user == self.context['request'].user:
+            raise serializers.ValidationError({'device_id': 'Device is already paired to your account.'})
 
         attrs['device'] = device
         return attrs
