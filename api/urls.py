@@ -51,4 +51,5 @@ urlpatterns = [
 
     path('device/settings/',               DeviceSettingsView.as_view(),           name='device-settings'),
     path('device/activate/',               DeviceActivateView.as_view(),           name='device-activate'),
+    path('device/gps-fallback/',           GPSFallbackView.as_view(),              name='device-gps-fallback'),
 ]
