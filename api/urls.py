@@ -1,6 +1,6 @@
 from django.urls import path
 from .views import (
-    GPSFallbackView, DeviceSettingsView, DeviceActivateView,
+    GPSFallbackView, DeviceSettingsView, DeviceActivateView, DeviceWeatherView,
     DeviceListView, DeviceDetailView, ConnectDeviceView,
     DashboardView, HealthCheckView, WeatherView, WeatherLocationView, LocationSearchView,
     NotificationListView, NotificationDetailView, NotificationMarkAllReadView,
@@ -52,4 +52,5 @@ urlpatterns = [
     path('device/settings/',               DeviceSettingsView.as_view(),           name='device-settings'),
     path('device/activate/',               DeviceActivateView.as_view(),           name='device-activate'),
     path('device/gps-fallback/',           GPSFallbackView.as_view(),              name='device-gps-fallback'),
+    path('device/weather/',                DeviceWeatherView.as_view(),            name='device-weather'),
 ]

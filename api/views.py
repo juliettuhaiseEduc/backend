@@ -1471,6 +1471,85 @@ class DeviceSettingsView(APIView):
         })
 
 
+class DeviceWeatherView(APIView):
+    """
+    Hardware calls this to get weather + rain forecast.
+    Auth: device_id + secret_key.
+    GET /api/device/weather/?device_id=X&secret_key=Y&lat=L&lon=N
+    Returns: rain_pct, weather_desc, rain_time (HH:MM of first rainy slot or empty)
+    """
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        import urllib.request, json as _json
+
+        device_id  = request.GET.get('device_id', '').strip()
+        secret_key = request.GET.get('secret_key', '').strip()
+        if not device_id or not secret_key:
+            return Response({'error': 'device_id and secret_key required'}, status=status.HTTP_400_BAD_REQUEST)
+        device = Device.objects.filter(device_id=device_id, secret_key=secret_key).first()
+        if not device:
+            return Response({'error': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        lat = request.GET.get('lat')
+        lon = request.GET.get('lon')
+
+        # Fall back to FarmSettings location if no coords supplied
+        if not lat or not lon:
+            fs = FarmSettings.objects.filter(user=device.user).first()
+            if fs:
+                lat = fs.admin_weather_lat or fs.weather_lat
+                lon = fs.admin_weather_lon or fs.weather_lon
+
+        if not lat or not lon:
+            return Response({'error': 'No location available'}, status=status.HTTP_404_NOT_FOUND)
+
+        api_key = getattr(settings, 'OPENWEATHER_API_KEY', '').strip()
+        if not api_key:
+            return Response({'error': 'Weather API not configured'}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+        try:
+            url = (
+                f'https://api.openweathermap.org/data/2.5/forecast'
+                f'?lat={lat}&lon={lon}&cnt=8&appid={api_key}&units=metric'
+            )
+            req = urllib.request.Request(url, headers={'User-Agent': 'EducFarm/1.0'})
+            with urllib.request.urlopen(req, timeout=8) as r:
+                data = _json.loads(r.read().decode())
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_502_BAD_GATEWAY)
+
+        slots = data.get('list', [])
+        if not slots:
+            return Response({'error': 'No forecast data'}, status=status.HTTP_502_BAD_GATEWAY)
+
+        first = slots[0]
+        rain_pct  = int(first.get('pop', 0) * 100)
+        desc      = ''
+        weather   = first.get('weather', [{}])[0]
+        desc_raw  = weather.get('description', '')
+        if desc_raw:
+            desc = desc_raw[0].upper() + desc_raw[1:]
+
+        # Find first slot where rain probability >= 60%
+        rain_time = ''
+        for slot in slots:
+            if slot.get('pop', 0) >= 0.6:
+                from datetime import datetime
+                dt = datetime.utcfromtimestamp(slot['dt'])
+                # Adjust to UTC+3 (East Africa Time)
+                from datetime import timedelta
+                dt_eat = dt + timedelta(hours=3)
+                rain_time = dt_eat.strftime('%H:%M')
+                break
+
+        return Response({
+            'rain_pct':     rain_pct,
+            'weather_desc': desc,
+            'rain_time':    rain_time,   # HH:MM in EAT, empty string if no rain expected
+        })
+
+
 class GPSFallbackView(APIView):
     """
     ESP32 calls this when A9G GPS fails.
